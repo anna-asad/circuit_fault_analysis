@@ -1,0 +1,159 @@
+
+import json
+import numpy as np
+import pandas as pd
+import joblib
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, hamming_loss, accuracy_score
+
+DATASET_PATH = "dataset/dataset.csv"
+MODEL_PATH = "models/fault_classifier.joblib"
+FEATURES_PATH = "models/feature_columns.joblib"
+LABELS_PATH = "models/label_columns.joblib"
+NOMINAL_LOOKUP_PATH = "models/nominal_lookup.joblib"
+
+LABEL_NAMES = ["drift", "partial_short", "partial_open", "wrong_component_type"]
+
+
+def build_nominal_lookup(df):
+    lookup = {}
+    normal_rows = df[df["fault_type"] == "normal"]
+    for _, row in normal_rows.iterrows():
+        comps = json.loads(row["component_values"])
+        key = frozenset(comps.keys())
+        bucket = lookup.setdefault(key, {})
+        for name, val in comps.items():
+            bucket.setdefault(name, []).append(val)
+    return {key: {name: float(np.mean(vals)) for name, vals in d.items()}
+            for key, d in lookup.items()}
+
+
+def extract_features(row, nominal_lookup):
+    comps_dict = json.loads(row["component_values"])
+    comps = list(comps_dict.values())
+    volts = list(json.loads(row["node_voltages"]).values())
+    currs = list(json.loads(row["branch_currents"]).values())
+
+    key = frozenset(comps_dict.keys())
+    nominal = nominal_lookup.get(key, {})
+    deviations = []
+    for name, val in comps_dict.items():
+        nom = nominal.get(name)
+        if nom:
+            deviations.append(abs(val - nom) / nom)
+
+    deviations_sorted = sorted(deviations, reverse=True)
+    max_dev = deviations_sorted[0] if deviations_sorted else 0
+    second_dev = deviations_sorted[1] if len(deviations_sorted) > 1 else 0
+    dev_ratio = (second_dev / max_dev) if max_dev > 0 else 0
+    n_dev_over_20pct = sum(d > 0.20 for d in deviations)
+
+    return pd.Series({
+        "n_components": len(comps),
+        "comp_mean": np.mean(comps) if comps else 0,
+        "comp_max": np.max(comps) if comps else 0,
+        "comp_min": np.min(comps) if comps else 0,
+        "comp_std": np.std(comps) if comps else 0,
+        "n_nodes": len(volts),
+        "volt_mean": np.mean(volts) if volts else 0,
+        "volt_max": np.max(volts) if volts else 0,
+        "volt_min": np.min(volts) if volts else 0,
+        "n_currents": len(currs),
+        "curr_mean_abs": np.mean(np.abs(currs)) if currs else 0,
+        "curr_max_abs": np.max(np.abs(currs)) if currs else 0,
+        # missing currents happen when a component was swapped for a
+        # capacitor (wrong_component_type) -- itself a useful signal
+        "n_missing_currents": len(comps) - len(currs),
+        # deviation-from-normal features -- these are what let the
+        # model notice TWO separately-faulted components instead of
+        # just the worse one
+        "max_deviation_ratio": max_dev,
+        "second_deviation_ratio": second_dev,
+        "deviation_ratio_2nd_over_1st": dev_ratio,
+        "n_components_deviated_over_20pct": n_dev_over_20pct,
+    })
+
+
+def parse_fault_labels(fault_type, faulted_components):
+    kinds = set()
+    if fault_type == "normal":
+        return kinds
+    if fault_type in ("drift", "partial_short", "partial_open", "wrong_component_type"):
+        kinds.add(fault_type)
+        return kinds
+    if fault_type == "multi_fault":
+        if isinstance(faulted_components, str):
+            for part in faulted_components.split(";"):
+                if ":" not in part:
+                    continue
+                _, kind_str = part.split(":", 1)
+                for k in kind_str.split("+"):
+                    if k in LABEL_NAMES:
+                        kinds.add(k)
+        return kinds
+    return kinds
+
+
+def load_and_prepare(path):
+    df = pd.read_csv(path)
+    df = df[df["success"] == True].copy()
+
+    nominal_lookup = build_nominal_lookup(df)
+    X = df.apply(lambda row: extract_features(row, nominal_lookup), axis=1)
+
+    label_sets = df.apply(
+        lambda row: parse_fault_labels(row["fault_type"], row["faulted_components"]),
+        axis=1,
+    )
+    Y = pd.DataFrame(
+        {label: label_sets.apply(lambda s: 1 if label in s else 0) for label in LABEL_NAMES}
+    )
+
+    return X, Y, nominal_lookup, df["fault_type"]
+
+
+def main():
+    X, Y, nominal_lookup, fault_type_col = load_and_prepare(DATASET_PATH)
+    feature_columns = list(X.columns)
+
+    print(f"Loaded {len(X)} samples")
+    print("Original fault_type counts (for reference only, not what we train on):")
+    print(fault_type_col.value_counts(), "\n")
+    print("How often each of the 4 labels is 'yes':")
+    print(Y.sum(), "\n")
+
+    X_train, X_test, Y_train, Y_test = train_test_split(
+        X, Y, test_size=0.3, random_state=42
+    )
+    clf = RandomForestClassifier(
+        n_estimators=200,
+        random_state=42,
+        class_weight="balanced",
+    )
+    clf.fit(X_train, Y_train)
+
+    Y_pred = pd.DataFrame(clf.predict(X_test), columns=LABEL_NAMES, index=X_test.index)
+
+    print("=== Per-label classification report (test split) ===")
+    for label in LABEL_NAMES:
+        print(f"--- {label} ---")
+        print(classification_report(Y_test[label], Y_pred[label], zero_division=0))
+
+    print("=== Overall multi-label metrics ===")
+    print(f"Hamming loss (lower is better, 0=perfect): {hamming_loss(Y_test, Y_pred):.4f}")
+    print(f"Exact-match accuracy (all 4 labels correct at once): "f"{accuracy_score(Y_test, Y_pred):.2%}")
+
+    joblib.dump(clf, MODEL_PATH)
+    joblib.dump(feature_columns, FEATURES_PATH)
+    joblib.dump(LABEL_NAMES, LABELS_PATH)
+    joblib.dump(nominal_lookup, NOMINAL_LOOKUP_PATH)
+
+    print(f"\nSaved model to {MODEL_PATH}")
+    print(f"Saved feature column order to {FEATURES_PATH}")
+    print(f"Saved label order to {LABELS_PATH}")
+    print(f"Saved nominal lookup to {NOMINAL_LOOKUP_PATH}")
+
+
+if __name__ == "__main__":
+    main()

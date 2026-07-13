@@ -1,0 +1,5 @@
+# This directory will contain trained model files:
+# - fault_classifier.joblib
+# - feature_columns.joblib
+# - label_columns.joblib
+# - nominal_lookup.joblib

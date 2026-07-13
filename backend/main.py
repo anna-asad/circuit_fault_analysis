@@ -1,0 +1,317 @@
+"""FastAPI Backend for Circuit Fault Detector"""
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Optional
+import uvicorn
+
+# Import all components
+from validators import CircuitValidator, ComponentSpec, validate_circuit_quick
+from netlist_generator import generate_netlist
+from simulation_runner import SimulationRunner
+from structural_faults import detect_structural_faults
+from fault_analyzer import FaultAnalyzer
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="Circuit Fault Detector API",
+    description="Backend API for circuit simulation and fault detection",
+    version="1.0.0"
+)
+
+# CORS middleware for React frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # Vite default ports
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ============================================================================
+# Data Models (Pydantic schemas)
+# ============================================================================
+
+class ComponentModel(BaseModel):
+    """Represents a single circuit component."""
+    id: str = Field(..., description="Unique component identifier (e.g., 'R1', 'V1')")
+    type: str = Field(..., description="Component type: dc_source, resistor, capacitor, inductor, ground, ammeter, voltmeter")
+    value: float = Field(..., description="Component value (resistance, capacitance, voltage, etc.)")
+    nodes: List[str] = Field(..., description="Connected node IDs [positive, negative]")
+    position: Dict[str, float] = Field(default={"x": 0, "y": 0}, description="Canvas position")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "R1",
+                "type": "resistor",
+                "value": 1000,
+                "nodes": ["n1", "n2"],
+                "position": {"x": 300, "y": 200}
+            }
+        }
+
+
+class CircuitModel(BaseModel):
+    """Represents the complete circuit for simulation."""
+    nodes: List[str] = Field(..., description="List of all node IDs in the circuit")
+    components: List[ComponentModel] = Field(..., description="List of all components")
+    ground: str = Field(default="0", description="Ground node reference")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "nodes": ["n1", "n2", "0"],
+                "components": [
+                    {
+                        "id": "V1",
+                        "type": "dc_source",
+                        "value": 5.0,
+                        "nodes": ["n1", "0"],
+                        "position": {"x": 100, "y": 200}
+                    },
+                    {
+                        "id": "R1",
+                        "type": "resistor",
+                        "value": 1000,
+                        "nodes": ["n1", "n2"],
+                        "position": {"x": 300, "y": 200}
+                    }
+                ],
+                "ground": "0"
+            }
+        }
+
+
+class SimulationResponse(BaseModel):
+    """Response from simulation endpoint."""
+    success: bool
+    netlist: Optional[str] = None
+    structural_faults: List[str] = []
+    pattern_faults: Optional[Dict[str, Any]] = None
+    simulation_data: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+# ============================================================================
+# API Endpoints
+# ============================================================================
+
+@app.get("/")
+async def root():
+    """Health check endpoint."""
+    return {
+        "status": "online",
+        "service": "Circuit Fault Detector API",
+        "version": "1.0.0"
+    }
+
+
+@app.get("/api/health")
+async def health_check():
+    """Detailed health check with system status."""
+    
+    # Check ngspice
+    runner = SimulationRunner()
+    ngspice_installed, ngspice_version = runner.check_ngspice_installed()
+    
+    # Check ML model
+    analyzer = FaultAnalyzer()
+    ml_model_loaded = analyzer.is_model_loaded()
+    
+    return {
+        "status": "healthy",
+        "backend": "running",
+        "ml_model": "loaded" if ml_model_loaded else "not_loaded",
+        "ngspice": {
+            "installed": ngspice_installed,
+            "version": ngspice_version if ngspice_installed else None
+        }
+    }
+
+
+@app.get("/api/components")
+async def get_components():
+    """Get list of available circuit components with their properties."""
+    
+    components = [
+        {
+            "type": "dc_source",
+            "label": "DC Source",
+            "icon": "⚡",
+            "value_range": {"min": 0.1, "max": 100, "default": 5.0},
+            "unit": "V",
+            "description": "DC voltage source (battery)"
+        },
+        {
+            "type": "resistor",
+            "label": "Resistor",
+            "icon": "🔲",
+            "value_range": {"min": 1, "max": 1e6, "default": 1000},
+            "unit": "Ω",
+            "description": "Resistor component"
+        },
+        {
+            "type": "capacitor",
+            "label": "Capacitor",
+            "icon": "▯",
+            "value_range": {"min": 1e-12, "max": 1e-3, "default": 1e-7},
+            "unit": "F",
+            "description": "Capacitor component"
+        },
+        {
+            "type": "inductor",
+            "label": "Inductor",
+            "icon": "⏦",
+            "value_range": {"min": 1e-9, "max": 1e-3, "default": 1e-6},
+            "unit": "H",
+            "description": "Inductor component"
+        },
+        {
+            "type": "ground",
+            "label": "Ground",
+            "icon": "⏚",
+            "value_range": None,
+            "unit": None,
+            "description": "Ground reference (node 0)"
+        },
+        {
+            "type": "ammeter",
+            "label": "Ammeter",
+            "icon": "Ⓐ",
+            "value_range": None,
+            "unit": "A",
+            "description": "Current measurement device (must be in series)"
+        },
+        {
+            "type": "voltmeter",
+            "label": "Voltmeter",
+            "icon": "Ⓥ",
+            "value_range": None,
+            "unit": "V",
+            "description": "Voltage measurement device (must be in parallel)"
+        }
+    ]
+    
+    return {"components": components}
+
+
+@app.post("/api/simulate", response_model=SimulationResponse)
+async def simulate_circuit(circuit: CircuitModel):
+    """
+    Simulate circuit and detect faults.
+    
+    Steps:
+    1. Validate circuit structure
+    2. Generate SPICE netlist
+    3. Run ngspice DC analysis
+    4. Detect structural faults
+    5. Run ML model for pattern faults
+    6. Return combined results
+    """
+    
+    try:
+        # Step 1: Validate circuit
+        circuit_dict = circuit.model_dump()
+        validator = CircuitValidator()
+        is_valid, errors, warnings = validator.validate(circuit_dict)
+        
+        if not is_valid:
+            return SimulationResponse(
+                success=False,
+                netlist=None,
+                structural_faults=errors,
+                pattern_faults=None,
+                simulation_data=None,
+                error=f"Circuit validation failed: {'; '.join(errors)}"
+            )
+        
+        # Step 2: Generate SPICE netlist
+        netlist = generate_netlist(circuit_dict)
+        
+        # Step 3: Run ngspice simulation
+        runner = SimulationRunner()
+        sim_result = runner.run_simulation(netlist)
+        
+        if not sim_result["success"]:
+            return SimulationResponse(
+                success=False,
+                netlist=netlist,
+                structural_faults=warnings,
+                pattern_faults=None,
+                simulation_data=None,
+                error=f"Simulation failed: {sim_result['error']}"
+            )
+        
+        # Extract features for ML model
+        ml_features = runner.extract_features_for_ml(
+            sim_result["voltages"],
+            sim_result["currents"],
+            circuit_dict
+        )
+        
+        # Step 4: Detect structural faults from simulation results
+        structural_faults_detected = detect_structural_faults(circuit_dict, sim_result)
+        
+        # Combine with validation warnings
+        all_structural_faults = warnings + structural_faults_detected
+        
+        # Step 5: ML pattern fault classification
+        analyzer = FaultAnalyzer()
+        pattern_faults = analyzer.analyze_pattern_faults(ml_features)
+        
+        return SimulationResponse(
+            success=True,
+            netlist=netlist,
+            structural_faults=all_structural_faults,
+            pattern_faults=pattern_faults,
+            simulation_data={
+                "voltages": sim_result["voltages"],
+                "currents": sim_result["currents"],
+                "ml_features": ml_features
+            },
+            error=None
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/validate")
+async def validate_circuit(circuit: CircuitModel):
+    """
+    Validate circuit structure without running simulation.
+    Quick structural fault check only.
+    """
+    
+    try:
+        circuit_dict = circuit.model_dump()
+        result = validate_circuit_quick(circuit_dict)
+        
+        return {
+            "valid": result["valid"],
+            "errors": result["errors"],
+            "warnings": result["warnings"]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============================================================================
+# Server Entry Point
+# ============================================================================
+
+if __name__ == "__main__":
+    print("🚀 Starting Circuit Fault Detector API...")
+    print("📡 API documentation: http://localhost:8000/docs")
+    print("🔍 Health check: http://localhost:8000/api/health")
+    
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True  # Auto-reload on code changes
+    )
