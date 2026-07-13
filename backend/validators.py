@@ -223,19 +223,9 @@ class CircuitValidator:
         # Check if ground node exists in nodes list
         if ground_node not in nodes:
             self.errors.append(f"Ground node '{ground_node}' not found in nodes list")
-        
-        # Check if at least one component connects to ground
-        components = circuit_data.get("components", [])
-        ground_connected = False
-        
-        for component in components:
-            comp_nodes = component.get("nodes", [])
-            if ground_node in comp_nodes:
-                ground_connected = True
-                break
-        
-        if not ground_connected:
-            self.warnings.append(f"No components connected to ground node '{ground_node}'")
+
+        # Ground can be placed as a reference marker and resolved by the frontend converter.
+        # Don't require a direct wire connection here.
     
     def _validate_nodes(self, circuit_data: Dict):
         """Validate node connectivity."""

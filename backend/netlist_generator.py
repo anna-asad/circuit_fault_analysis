@@ -72,31 +72,50 @@ class NetlistGenerator:
             return  # Invalid component
         
         node1, node2 = comp_nodes[0], comp_nodes[1]
+        spice_name = self._get_spice_name(comp_type, comp_id)
+        if not spice_name:
+            return
         
         # Generate SPICE line based on component type
         if comp_type == "dc_source":
             # Voltage source: V1 n+ n- DC 5
-            line = f"{comp_id} {node1} {node2} DC {comp_value}"
+            line = f"{spice_name} {node1} {node2} DC {comp_value}"
         
         elif comp_type == "resistor":
             # Resistor: R1 n1 n2 1000
-            line = f"{comp_id} {node1} {node2} {comp_value}"
+            line = f"{spice_name} {node1} {node2} {comp_value}"
         
         elif comp_type == "capacitor":
             # Capacitor: C1 n1 n2 100n
             # For DC analysis, capacitor acts as open circuit
             # But we include it for completeness
-            line = f"{comp_id} {node1} {node2} {comp_value}"
+            line = f"{spice_name} {node1} {node2} {comp_value}"
         
         elif comp_type == "inductor":
             # Inductor: L1 n1 n2 1u
             # For DC analysis, inductor acts as short circuit (wire)
-            line = f"{comp_id} {node1} {node2} {comp_value}"
+            line = f"{spice_name} {node1} {node2} {comp_value}"
         
         else:
             return  # Unknown component type
         
         self.netlist_lines.append(line)
+
+    def _get_spice_name(self, comp_type: str, comp_id: str) -> Optional[str]:
+        """Return a SPICE-safe component name with the correct leading prefix."""
+        if not comp_id:
+            return None
+
+        if comp_type == "dc_source":
+            return comp_id if comp_id[:1].upper() == "V" else f"V{comp_id}"
+        if comp_type == "resistor":
+            return comp_id if comp_id[:1].upper() == "R" else f"R{comp_id}"
+        if comp_type == "capacitor":
+            return comp_id if comp_id[:1].upper() == "C" else f"C{comp_id}"
+        if comp_type == "inductor":
+            return comp_id if comp_id[:1].upper() == "L" else f"L{comp_id}"
+
+        return None
     
     def _add_control_section(self):
         """

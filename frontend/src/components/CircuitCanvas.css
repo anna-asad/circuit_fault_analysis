@@ -55,6 +55,35 @@
   line-height: 1.2;
 }
 
+.battery-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.battery-content {
+  flex: 1;
+}
+
+.battery-polarity {
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  color: #111827;
+  width: 14px;
+  text-align: center;
+}
+
+.battery-negative {
+  color: #b91c1c;
+}
+
+.battery-positive {
+  color: #1d4ed8;
+}
+
 .circuit-node-junction {
   width: 22px;
   height: 22px;
@@ -90,10 +119,22 @@
   background: #1f2937 !important;
 }
 
-.circuit-handle-target {
+.circuit-handle-left-source,
+.circuit-handle-left-target {
   left: -6px !important;
 }
 
-.circuit-handle-source {
+.circuit-handle-right-source,
+.circuit-handle-right-target {
   right: -6px !important;
+}
+
+.circuit-handle-left-source,
+.circuit-handle-right-source {
+  background: #0f766e !important;
+}
+
+.circuit-handle-left-target,
+.circuit-handle-right-target {
+  background: #1f2937 !important;
 }
