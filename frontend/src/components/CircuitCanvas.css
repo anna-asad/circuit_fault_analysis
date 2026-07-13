@@ -1,0 +1,99 @@
+.canvas-instructions {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  font-size: 13px;
+  color: #6b7280;
+  z-index: 5;
+  max-width: 90%;
+  text-align: center;
+}
+
+.canvas-instructions kbd {
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+/* Custom node styling is handled in CircuitCanvas.jsx getNodeStyle() */
+
+.react-flow__node {
+  cursor: pointer;
+}
+
+.react-flow__node.selected {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4) !important;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #3b82f6 !important;
+  stroke-width: 3px !important;
+}
+
+.circuit-node {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.circuit-node-component {
+  min-width: 120px;
+}
+
+.circuit-node-content {
+  pointer-events: none;
+  line-height: 1.2;
+}
+
+.circuit-node-junction {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.junction-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #111827;
+  color: transparent;
+}
+
+.circuit-node-ground {
+  min-width: 72px;
+  min-height: 72px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.ground-symbol {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.circuit-handle {
+  width: 10px !important;
+  height: 10px !important;
+  border: 2px solid #ffffff !important;
+  background: #1f2937 !important;
+}
+
+.circuit-handle-target {
+  left: -6px !important;
+}
+
+.circuit-handle-source {
+  right: -6px !important;
+}

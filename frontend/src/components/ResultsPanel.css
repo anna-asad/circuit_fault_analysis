@@ -1,0 +1,132 @@
+.results-panel {
+  width: 320px;
+  background: white;
+  border-left: 1px solid #e5e7eb;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.results-panel h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 20px;
+}
+
+.no-results {
+  color: #6b7280;
+  font-size: 14px;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.results-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.result-section {
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 16px;
+}
+
+.result-section:last-child {
+  border-bottom: none;
+}
+
+.result-section h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 12px;
+}
+
+.data-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.data-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px;
+  background: #f9fafb;
+  border-radius: 4px;
+}
+
+.data-label {
+  font-size: 13px;
+  color: #6b7280;
+  font-family: monospace;
+}
+
+.data-value {
+  font-size: 13px;
+  color: #1f2937;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.fault-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fault-item {
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.fault-item.warning {
+  background: #fef3c7;
+  color: #92400e;
+  border-left: 3px solid #f59e0b;
+}
+
+.ml-result {
+  padding: 12px;
+  background: #eff6ff;
+  border-radius: 8px;
+  border-left: 3px solid #3b82f6;
+}
+
+.ml-prediction {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.ml-prediction strong {
+  font-size: 14px;
+  color: #1e40af;
+}
+
+.confidence {
+  font-size: 12px;
+  font-weight: 600;
+  color: #3b82f6;
+  background: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.ml-description {
+  font-size: 12px;
+  color: #1e40af;
+  line-height: 1.5;
+}
+
+.error-message {
+  padding: 20px;
+  background: #fee2e2;
+  color: #991b1b;
+  border-radius: 8px;
+  text-align: center;
+}

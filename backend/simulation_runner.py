@@ -223,7 +223,7 @@ class SimulationRunner:
             elif comp_type == "capacitor":
                 features["capacitor_value"] = comp_value
             elif comp_type == "inductor":
-                features.get("inductor_value", comp_value)
+                features["inductor_value"] = comp_value
         
         # Extract measured values from simulation
         # Get voltage at first non-ground node
