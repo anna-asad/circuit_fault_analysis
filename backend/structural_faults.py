@@ -184,6 +184,7 @@ class StructuralFaultDetector:
         
         voltages = simulation_result.get("voltages", {})
         currents = simulation_result.get("currents", {})
+        max_current = max((abs(current) for current in currents.values()), default=0.0)
         
         # Check for excessive current (> 1A indicates likely short)
         for source, current in currents.items():
@@ -205,8 +206,8 @@ class StructuralFaultDetector:
                     v2 = voltages.get(nodes[1], 0)
                     voltage_drop = abs(v1 - v2)
                     
-                    # For resistors, near-zero voltage despite current flow = short
-                    if comp_type == "resistor" and voltage_drop < 0.01:
+                    # For resistors, only treat near-zero voltage as a short when current is actually flowing.
+                    if comp_type == "resistor" and voltage_drop < 0.01 and max_current > 0.01:
                         self.faults.append(
                             f"Short circuit across {comp_id}: Voltage collapsed to ~zero ({voltage_drop:.4f}V) - component may be shorted or bypassed"
                         )
@@ -221,7 +222,7 @@ class StructuralFaultDetector:
                     expected_voltage = component.get("value", 0)
                     
                     # If voltage source output is much less than expected, it's shorted
-                    if expected_voltage > 0 and voltage_output < expected_voltage * 0.1:
+                    if expected_voltage > 0 and voltage_output < expected_voltage * 0.1 and max_current > 0.01:
                         self.faults.append(
                             f"Short circuit: Voltage source {comp_id} output collapsed (expected {expected_voltage:.2f}V, got {voltage_output:.4f}V)"
                         )

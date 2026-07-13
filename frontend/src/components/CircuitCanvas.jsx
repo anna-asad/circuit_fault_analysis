@@ -24,18 +24,32 @@ function NodeTerminals() {
   );
 }
 
-function ComponentNode({ data }) {
+function ComponentNode({ id, data }) {
+  const handleEditValue = (event) => {
+    event.stopPropagation();
+    if (data?.onEditValue) {
+      data.onEditValue(id);
+    }
+  };
+
   return (
     <div className="circuit-node circuit-node-component" style={data.style}>
       <NodeTerminals />
       {data.componentType === 'dc_source' ? (
         <div className="battery-body">
           <span className="battery-polarity battery-negative">−</span>
-          <div className="circuit-node-content battery-content">{data.label}</div>
+          <button type="button" className="circuit-node-content battery-content value-button" onClick={handleEditValue}>
+            {formatNodeValue(data.componentType, data.value)}
+          </button>
           <span className="battery-polarity battery-positive">+</span>
         </div>
       ) : (
-        <div className="circuit-node-content">{data.label}</div>
+        <div className="circuit-node-content component-content">
+          <div className="component-icon">{getComponentIcon(data.componentType)}</div>
+          <button type="button" className="value-button" onClick={handleEditValue}>
+            {formatNodeValue(data.componentType, data.value)}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -61,6 +75,35 @@ function GroundNode({ data }) {
 function CircuitCanvas({ setCircuit }) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  const handleEditValue = useCallback((nodeId) => {
+    setNodes((currentNodes) => currentNodes.map((node) => {
+      if (node.id !== nodeId) {
+        return node;
+      }
+
+      const currentValue = node.data?.value ?? getDefaultValue(node.data?.componentType);
+      const nextValueRaw = window.prompt(`Enter new value for ${node.data?.componentType || 'component'}`, String(currentValue));
+
+      if (nextValueRaw === null) {
+        return node;
+      }
+
+      const nextValue = Number(nextValueRaw);
+      if (!Number.isFinite(nextValue)) {
+        window.alert('Please enter a valid numeric value.');
+        return node;
+      }
+
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          value: nextValue,
+        },
+      };
+    }));
+  }, [setNodes]);
 
   // Memoize nodeTypes to prevent React Flow warning
   const nodeTypes = useMemo(() => ({
@@ -127,6 +170,7 @@ function CircuitCanvas({ setCircuit }) {
           label,
           componentType: type,
           value: defaultValue
+          ,onEditValue: handleEditValue
         },
         style: getNodeStyle(type),
       };
@@ -237,6 +281,13 @@ function formatValue(value, type) {
     return `${value*1e9}nH`;
   }
   return value;
+}
+
+function formatNodeValue(type, value) {
+  if (type === 'dc_source') {
+    return `${value}V`;
+  }
+  return formatValue(value, type);
 }
 
 function getComponentIcon(type) {
