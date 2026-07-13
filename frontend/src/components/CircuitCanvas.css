@@ -113,28 +113,25 @@
 }
 
 .circuit-handle {
-  width: 10px !important;
-  height: 10px !important;
+  width: 14px !important;
+  height: 14px !important;
   border: 2px solid #ffffff !important;
   background: #1f2937 !important;
+  z-index: 5 !important;
 }
 
-.circuit-handle-left-source,
-.circuit-handle-left-target {
+.circuit-handle-left {
   left: -6px !important;
 }
 
-.circuit-handle-right-source,
-.circuit-handle-right-target {
+.circuit-handle-right {
   right: -6px !important;
 }
 
-.circuit-handle-left-source,
-.circuit-handle-right-source {
-  background: #0f766e !important;
+.circuit-handle-left {
+  background: #991b1b !important;
 }
 
-.circuit-handle-left-target,
-.circuit-handle-right-target {
-  background: #1f2937 !important;
+.circuit-handle-right {
+  background: #1d4ed8 !important;
 }
