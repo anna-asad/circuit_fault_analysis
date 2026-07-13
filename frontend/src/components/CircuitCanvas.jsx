@@ -18,10 +18,8 @@ const initialEdges = [];
 function NodeTerminals() {
   return (
     <>
-      <Handle type="source" position={Position.Left} id="left-source" className="circuit-handle circuit-handle-left-source" />
-      <Handle type="target" position={Position.Left} id="left-target" className="circuit-handle circuit-handle-left-target" />
-      <Handle type="source" position={Position.Right} id="right-source" className="circuit-handle circuit-handle-right-source" />
-      <Handle type="target" position={Position.Right} id="right-target" className="circuit-handle circuit-handle-right-target" />
+      <Handle type="source" position={Position.Left} id="left" className="circuit-handle circuit-handle-left" />
+      <Handle type="source" position={Position.Right} id="right" className="circuit-handle circuit-handle-right" />
     </>
   );
 }
@@ -194,6 +192,7 @@ function CircuitCanvas({ setCircuit }) {
         onNodesDelete={onNodesDelete}
         onEdgesDelete={onEdgesDelete}
         nodeTypes={nodeTypes}
+        connectionMode="loose"
         fitView
         deleteKeyCode={['Delete', 'Backspace']}
       >
