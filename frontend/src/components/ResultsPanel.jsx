@@ -11,6 +11,12 @@ function ResultsPanel({ results }) {
   }
 
   const { success, simulation_data, structural_faults, pattern_faults, error } = results;
+  const voltages = simulation_data?.voltages || {};
+  const currents = simulation_data?.currents || {};
+  const nodeAliases = Object.keys(voltages).reduce((aliases, nodeName, index) => {
+    aliases[nodeName] = `Internal node ${index + 1}`;
+    return aliases;
+  }, {});
 
   return (
     <aside className="results-panel">
@@ -18,13 +24,24 @@ function ResultsPanel({ results }) {
       
       {success ? (
         <div className="results-content">
+          <section className="result-section info-section">
+            <h4>What this means</h4>
+            <p className="info-copy">
+              Node names like <strong>n3</strong> and <strong>n4</strong> are auto-generated internal circuit nodes.
+              A node can show <strong>0V</strong> when it is floating or not part of a complete return path.
+            </p>
+          </section>
+
           {/* Voltages */}
           <section className="result-section">
             <h4>⚡ Voltages</h4>
             <div className="data-grid">
-              {Object.entries(simulation_data?.voltages || {}).map(([node, voltage]) => (
+              {Object.entries(voltages).map(([node, voltage]) => (
                 <div key={node} className="data-item">
-                  <span className="data-label">V({node})</span>
+                  <div className="data-label-wrap">
+                    <span className="data-label">V({node})</span>
+                    <span className="data-subtext">{nodeAliases[node]}</span>
+                  </div>
                   <span className="data-value">{voltage.toFixed(3)}V</span>
                 </div>
               ))}
@@ -35,7 +52,7 @@ function ResultsPanel({ results }) {
           <section className="result-section">
             <h4>🔌 Currents</h4>
             <div className="data-grid">
-              {Object.entries(simulation_data?.currents || {}).map(([source, current]) => (
+              {Object.entries(currents).map(([source, current]) => (
                 <div key={source} className="data-item">
                   <span className="data-label">I({source})</span>
                   <span className="data-value">{Math.abs(current * 1000).toFixed(2)}mA</span>
