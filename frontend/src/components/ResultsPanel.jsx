@@ -10,7 +10,7 @@ function ResultsPanel({ results }) {
     );
   }
 
-  const { success, simulation_data, structural_faults, pattern_faults } = results;
+  const { success, simulation_data, structural_faults, pattern_faults, error } = results;
 
   return (
     <aside className="results-panel">
@@ -72,7 +72,23 @@ function ResultsPanel({ results }) {
         </div>
       ) : (
         <div className="error-message">
-          ❌ Simulation failed
+          <h4>❌ Simulation failed</h4>
+          {error && <p className="error-detail">{error}</p>}
+
+          {structural_faults && structural_faults.length > 0 && (
+            <section className="result-section">
+              <h4>⚠️ Structural Issues</h4>
+              <ul className="fault-list">
+                {structural_faults.map((fault, idx) => (
+                  <li key={idx} className="fault-item warning">{fault}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {!error && (!structural_faults || structural_faults.length === 0) && (
+            <p className="error-detail">The backend rejected the circuit, but no detailed message was returned.</p>
+          )}
         </div>
       )}
     </aside>

@@ -15,12 +15,30 @@ import './CircuitCanvas.css';
 const initialNodes = [];
 const initialEdges = [];
 
+function NodeTerminals() {
+  return (
+    <>
+      <Handle type="source" position={Position.Left} id="left-source" className="circuit-handle circuit-handle-left-source" />
+      <Handle type="target" position={Position.Left} id="left-target" className="circuit-handle circuit-handle-left-target" />
+      <Handle type="source" position={Position.Right} id="right-source" className="circuit-handle circuit-handle-right-source" />
+      <Handle type="target" position={Position.Right} id="right-target" className="circuit-handle circuit-handle-right-target" />
+    </>
+  );
+}
+
 function ComponentNode({ data }) {
   return (
     <div className="circuit-node circuit-node-component" style={data.style}>
-      <Handle type="target" position={Position.Left} className="circuit-handle circuit-handle-target" />
-      <div className="circuit-node-content">{data.label}</div>
-      <Handle type="source" position={Position.Right} className="circuit-handle circuit-handle-source" />
+      <NodeTerminals />
+      {data.componentType === 'dc_source' ? (
+        <div className="battery-body">
+          <span className="battery-polarity battery-negative">−</span>
+          <div className="circuit-node-content battery-content">{data.label}</div>
+          <span className="battery-polarity battery-positive">+</span>
+        </div>
+      ) : (
+        <div className="circuit-node-content">{data.label}</div>
+      )}
     </div>
   );
 }
@@ -28,8 +46,7 @@ function ComponentNode({ data }) {
 function JunctionNode({ data }) {
   return (
     <div className="circuit-node circuit-node-junction" style={data.style}>
-      <Handle type="target" position={Position.Left} className="circuit-handle circuit-handle-target" />
-      <Handle type="source" position={Position.Right} className="circuit-handle circuit-handle-source" />
+      <NodeTerminals />
       <div className="junction-dot">{data.label}</div>
     </div>
   );
@@ -98,7 +115,7 @@ function CircuitCanvas({ setCircuit }) {
       } else if (type === 'junction') {
         label = '●'; // Small dot
       } else if (type === 'dc_source') {
-        label = `⚡\n${defaultValue}V\n(+)`;
+        label = `${defaultValue}V`;
       } else {
         const formattedValue = formatValue(defaultValue, type);
         label = `${getComponentIcon(type)}\n${formattedValue}`;
@@ -161,7 +178,7 @@ function CircuitCanvas({ setCircuit }) {
     <div style={{ width: '100%', height: '100%' }} onKeyDown={onKeyDown} tabIndex={0}>
       <div className="canvas-instructions">
         💡 <strong>Build circuits:</strong> 
-        Wire components using the left/right terminals or use <strong>Junctions (●)</strong> for splits/merges |
+        Wire components from any terminal to any terminal or use <strong>Junctions (●)</strong> for splits/merges |
         Place <strong>Ground (⏚)</strong> anywhere on the canvas |
         Battery+ top | <kbd>Delete</kbd> to remove
       </div>
