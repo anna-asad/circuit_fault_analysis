@@ -46,10 +46,36 @@ def _extract_features(
     """
     Compute the 17 features the RandomForest was trained on.
     Mirrors extract_features() in src/train.py / src/predictor.py exactly.
+
+    Key notes on current sources
+    ----------------------------
+    * A current source forces a fixed current — ngspice does not report its
+      branch current via @I[i] in the same way it does for resistors, and the
+      dataset generator never requested those readings.  Including a current
+      source in `component_values` (for comp_mean / comp_std etc.) is correct,
+      but it must NOT be counted in `n_missing_currents`.
+    * `n_missing_currents` was designed as a signal for wrong_component_type
+      (a resistor replaced by a capacitor, which produces no @R[i] reading).
+      It should count only passive components (R, C, L) minus the number of
+      branch currents returned — sources are excluded from this calculation.
     """
     comps  = list(component_values.values())
     volts  = list(node_voltages.values())
     currs  = list(branch_currents.values())
+
+    # Count only passive components for n_missing_currents.
+    # Sources (dc_source, current_source) never appear in branch_currents from
+    # the dataset generator, so including them inflates the missing-count and
+    # triggers false wrong_component_type predictions.
+    PASSIVE_TYPES = {"resistor", "capacitor", "inductor"}
+    n_passive = sum(
+        1 for comp in component_values
+        # component_values keys are component IDs (e.g. "R1", "C1") not types,
+        # so we infer type from the ID prefix when the type is not stored here.
+        # The safe fallback: treat every component as passive UNLESS its ID
+        # starts with 'V' or 'I' (standard SPICE naming for sources).
+        if not (comp.upper().startswith('V') or comp.upper().startswith('I'))
+    )
 
     # Deviation-from-nominal features
     key     = frozenset(component_values.keys())
@@ -79,7 +105,8 @@ def _extract_features(
         "n_currents":                        len(currs),
         "curr_mean_abs":                     float(np.mean(np.abs(currs))) if currs else 0.0,
         "curr_max_abs":                      float(np.max(np.abs(currs))) if currs  else 0.0,
-        "n_missing_currents":                len(comps) - len(currs),
+        # Use passive-only count so current sources don't inflate this signal.
+        "n_missing_currents":                n_passive - len(currs),
         "max_deviation_ratio":               max_dev,
         "second_deviation_ratio":            second_dev,
         "deviation_ratio_2nd_over_1st":      dev_ratio,

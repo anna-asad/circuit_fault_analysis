@@ -285,6 +285,55 @@ CIRCUITS = {
             "R12": {"type": "R", "n1": "n6", "n2": "n7", "value": 1},
         },
     },
+
+    # --- Circuit 12: current-source voltage divider -------------------------
+    # A single DC current source (10 mA) drives two resistors in parallel
+    # (R1=1kΩ, R2=2kΩ).  By CDR:
+    #   V_out = I1 * (R1‖R2) = 0.01 * 666.67 = 6.667 V
+    #   I_R1  = V_out / R1   = 6.667 mA
+    #   I_R2  = V_out / R2   = 3.333 mA
+    # All values are exact (derived from CDR, not assumed).
+    # This topology is a dedicated training circuit for the current-source
+    # case: nominal lookup will have real R1, R2 reference values so that
+    # drift / partial-short / partial-open faults produce non-zero deviation
+    # features at inference time.
+    "current_source_voltage_divider": {
+        "description": (
+            "I1=10mA current source in parallel with R1(1kΩ) and R2(2kΩ). "
+            "Single node 'out' above ground. V_out = I*(R1||R2) = 6.667V. "
+            "All values exact from CDR."
+        ),
+        "elements": {
+            "I1": {"type": "I", "n1": "0",   "n2": "out", "value": 0.010},
+            "R1": {"type": "R", "n1": "out",  "n2": "0",   "value": 1000},
+            "R2": {"type": "R", "n1": "out",  "n2": "0",   "value": 2000},
+        },
+    },
+
+    # --- Circuit 13: current-source T-network ------------------------------
+    # 5 mA current source feeds a T-network: R_s=500Ω series arm from
+    # source node 'a' to midpoint 'b', R_p=1kΩ shunt from 'b' to ground,
+    # R_L=1.5kΩ load from 'b' to output 'c' (with 'c' floating unless
+    # grounded through R_L — ngspice needs the return path, so we add a
+    # 10MΩ leakage R_leak from 'c' to 0 to avoid a floating node error).
+    # Nominal voltages and currents derived from KCL/KVL:
+    #   V_a = I1 * R_s_parallel = 0.005 * (500 || 1000 || 1500 ... )
+    # Exact solution via nodal: V_b = I1 * (R_p || R_L) assuming ideal source.
+    "current_source_t_network": {
+        "description": (
+            "I1=5mA from 0 to node 'a'. R_s=500 series (a→b). "
+            "R_p=1000 shunt (b→0). R_L=1500 load (b→c). "
+            "R_leak=10MEG (c→0) avoids floating node. "
+            "All nominal values given directly."
+        ),
+        "elements": {
+            "I1":     {"type": "I", "n1": "0", "n2": "a",   "value": 0.005},
+            "R_s":    {"type": "R", "n1": "a", "n2": "b",   "value": 500},
+            "R_p":    {"type": "R", "n1": "b", "n2": "0",   "value": 1000},
+            "R_L":    {"type": "R", "n1": "b", "n2": "c",   "value": 1500},
+            "R_leak": {"type": "R", "n1": "c", "n2": "0",   "value": 10e6},
+        },
+    },
 }
 
 
@@ -330,6 +379,11 @@ def resistor_names(elements):
     return [name for name, el in elements.items() if el["type"] == "R"]
 
 
+def current_source_names(elements):
+    """Return names of all current source elements."""
+    return [name for name, el in elements.items() if el["type"] == "I"]
+
+
 def make_netlist(circuit_name, elements, override_values, cap_swap=None):
     """Build ngspice .cir text for a circuit, given per-resistor value
     overrides and an optional resistor name to replace with a capacitor
@@ -359,12 +413,18 @@ def make_netlist(circuit_name, elements, override_values, cap_swap=None):
     nodes = collect_nodes(elements)
     lines.append("print " + " ".join(f"v({n})" for n in nodes))
 
+    # Collect branch currents for resistors (excluding any cap-swapped one)
     r_names = resistor_names(elements)
-    print_targets = " ".join(
-        f"@{n.lower()}[i]" for n in r_names if n != cap_swap
-    )
-    if print_targets:
-        lines.append(f"print {print_targets}")
+    r_targets = " ".join(f"@{n.lower()}[i]" for n in r_names if n != cap_swap)
+    if r_targets:
+        lines.append(f"print {r_targets}")
+
+    # Also collect branch currents for current sources so the dataset records
+    # the actual injected current (useful for nominal lookup and deviation features)
+    i_names = current_source_names(elements)
+    i_targets = " ".join(f"@{n.lower()}[i]" for n in i_names)
+    if i_targets:
+        lines.append(f"print {i_targets}")
 
     lines.append(".endc")
     lines.append(".end")
@@ -396,6 +456,7 @@ def normal_value(nominal):
 def make_sample(circuit_name, circuit_def, fault_type, sample_index, folder):
     elements = circuit_def["elements"]
     r_names = resistor_names(elements)
+    i_names = current_source_names(elements)
 
     override = {name: normal_value(elements[name]["value"]) for name in r_names}
     faulted_components = []
@@ -427,14 +488,10 @@ def make_sample(circuit_name, circuit_def, fault_type, sample_index, folder):
             override[t1] = FAULT_VALUE_FN[k1](elements[t1]["value"])
             override[t2] = FAULT_VALUE_FN[k2](elements[t2]["value"])
 
-            # New syntax
-            faulted_components = [
-                f"{t1}:{k1}",
-                f"{t2}:{k2}"
-            ]
+            faulted_components = [f"{t1}:{k1}", f"{t2}:{k2}"]
 
         else:
-        # Single-resistor circuits (Rx only)
+            # Single-resistor circuits (Rx only)
             t1 = r_names[0]
 
             k1, k2 = random.sample(list(FAULT_VALUE_FN.keys()), 2)
@@ -442,11 +499,7 @@ def make_sample(circuit_name, circuit_def, fault_type, sample_index, folder):
             intermediate = FAULT_VALUE_FN[k1](elements[t1]["value"])
             override[t1] = FAULT_VALUE_FN[k2](intermediate)
 
-            # New syntax
-            faulted_components = [
-                f"{t1}:{k1}",
-                f"{t1}:{k2}"
-            ]
+            faulted_components = [f"{t1}:{k1}", f"{t1}:{k2}"]
     else:
         raise ValueError(f"Unknown fault type: {fault_type}")
 
@@ -460,16 +513,28 @@ def make_sample(circuit_name, circuit_def, fault_type, sample_index, folder):
     parsed = parse_op_output(res.stdout)
 
     nodes = collect_nodes(elements)
-    # ngspice always echoes node names in lowercase in its printed output,
-    # regardless of the case used in the netlist, so look up by lower().
     node_voltages = {n: parsed.get(f"v({n.lower()})") for n in nodes}
+
+    # Resistor branch currents (main training signal for n_missing_currents)
     branch_currents = {
         n: parsed.get(f"@{n.lower()}[i]") for n in r_names if n != cap_swap
     }
 
+    # Include current-source branch currents in the dataset so circuits 12 & 13
+    # can build a nominal lookup from their injected-current readings too.
+    for n in i_names:
+        val = parsed.get(f"@{n.lower()}[i]")
+        if val is not None:
+            branch_currents[n] = val
+
     success = res.returncode == 0 and all(v is not None for v in node_voltages.values())
 
+    # component_values: resistors (mutable, faulted) + current sources (fixed,
+    # for nominal-lookup keying).  Voltage sources are excluded — their value
+    # is a fixed supply rail, not a component that can drift or short.
     component_values = {name: override.get(name, elements[name]["value"]) for name in r_names}
+    for name in i_names:
+        component_values[name] = elements[name]["value"]  # current sources not mutated
 
     row = {
         "circuit_id": circuit_name,

@@ -56,6 +56,13 @@ def extract_features(row):
     dev_ratio = (second_dev / max_dev) if max_dev > 0 else 0
     n_dev_over_20pct = sum(d > 0.20 for d in deviations)
 
+    # Count only passive components (R/C/L) for n_missing_currents.
+    # Must match train.py and fault_analyzer.py exactly.
+    n_passive = sum(
+        1 for name in comps_dict
+        if not (name.upper().startswith('V') or name.upper().startswith('I'))
+    )
+
     return pd.Series({
         "n_components": len(comps),
         "comp_mean": np.mean(comps) if comps else 0,
@@ -69,7 +76,7 @@ def extract_features(row):
         "n_currents": len(currs),
         "curr_mean_abs": np.mean(np.abs(currs)) if currs else 0,
         "curr_max_abs": np.max(np.abs(currs)) if currs else 0,
-        "n_missing_currents": len(comps) - len(currs),
+        "n_missing_currents": n_passive - len(currs),
         "max_deviation_ratio": max_dev,
         "second_deviation_ratio": second_dev,
         "deviation_ratio_2nd_over_1st": dev_ratio,
