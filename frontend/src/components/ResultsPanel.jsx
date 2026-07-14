@@ -10,6 +10,7 @@ function ResultsPanel({ results }) {
     );
   }
 
+
   const { success, simulation_data, structural_faults, pattern_faults, error } = results;
   const voltages = simulation_data?.voltages || {};
   const currents = simulation_data?.currents || {};

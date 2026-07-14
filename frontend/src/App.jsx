@@ -2,39 +2,50 @@ import { useState } from 'react';
 import CircuitCanvas from './components/CircuitCanvas';
 import ComponentSidebar from './components/ComponentSidebar';
 import SimulateButton from './components/SimulateButton';
-import ResultsPanel from './components/ResultsPanel';
+import ResultsPage from './pages/ResultsPage';
 import './App.css';
 
 function App() {
   const [circuit, setCircuit] = useState({ nodes: [], edges: [] });
   const [simulationResults, setSimulationResults] = useState(null);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [showResultsPage, setShowResultsPage] = useState(false);
 
-  return (
+  const handleSimulateResults = (results) => {
+    setSimulationResults(results);
+    setShowResultsPage(true);
+  };
+
+  return showResultsPage ? (
+    <ResultsPage
+      results={simulationResults}
+      circuit={circuit}
+      onBack={() => {
+        setShowResultsPage(false);
+      }}
+    />
+  ) : (
     <div className="app">
       <header className="app-header">
         <h1>⚡ Circuit Fault Detector</h1>
-        <SimulateButton 
+        <SimulateButton
           circuit={circuit}
-          onSimulate={setSimulationResults}
+          onSimulate={handleSimulateResults}
           isSimulating={isSimulating}
           setIsSimulating={setIsSimulating}
         />
       </header>
-      
+
       <div className="app-body">
         <ComponentSidebar />
-        
+
         <main className="canvas-container">
-          <CircuitCanvas 
-            setCircuit={setCircuit}
-          />
+          <CircuitCanvas setCircuit={setCircuit} circuit={circuit} mode="edit" />
         </main>
-        
-        <ResultsPanel results={simulationResults} />
       </div>
     </div>
   );
 }
 
 export default App;
+
