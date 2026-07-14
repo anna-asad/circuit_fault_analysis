@@ -95,9 +95,12 @@
 .component-svg-fallback {
   display: none;
   width: 100%;
-  display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.component-svg-fallback.visible {
+  display: flex;
 }
 
 .component-visual-wrapper {

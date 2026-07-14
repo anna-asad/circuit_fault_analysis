@@ -17,13 +17,15 @@ function App() {
   };
 
   return showResultsPage ? (
-    <ResultsPage
-      results={simulationResults}
-      circuit={circuit}
-      onBack={() => {
-        setShowResultsPage(false);
-      }}
-    />
+    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <ResultsPage
+        results={simulationResults}
+        circuit={circuit}
+        onBack={() => {
+          setShowResultsPage(false);
+        }}
+      />
+    </div>
   ) : (
     <div className="app">
       <header className="app-header">

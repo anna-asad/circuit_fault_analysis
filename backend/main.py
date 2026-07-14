@@ -252,32 +252,29 @@ async def simulate_circuit(circuit: CircuitModel):
                 error=f"Simulation failed: {sim_result['error']}"
             )
         
-        # Extract features for ML model
-        ml_features = runner.extract_features_for_ml(
-            sim_result["voltages"],
-            sim_result["currents"],
-            circuit_dict
-        )
-        
         # Step 4: Detect structural faults from simulation results
         structural_faults_detected = detect_structural_faults(circuit_dict, sim_result)
-        
-        # Combine with validation warnings
         all_structural_faults = warnings + structural_faults_detected
-        
+
         # Step 5: ML pattern fault classification
+        # Uses the real trained model — features are extracted inside analyze()
+        # from the full circuit definition + raw ngspice voltages/currents.
         analyzer = FaultAnalyzer()
-        pattern_faults = analyzer.analyze_pattern_faults(ml_features)
-        
+        pattern_faults = analyzer.analyze(
+            circuit_data    = circuit_dict,
+            node_voltages   = sim_result["voltages"],
+            branch_currents = sim_result["currents"],
+        )
+
         return SimulationResponse(
             success=True,
             netlist=netlist,
             structural_faults=all_structural_faults,
             pattern_faults=pattern_faults,
             simulation_data={
-                "voltages": sim_result["voltages"],
-                "currents": sim_result["currents"],
-                "ml_features": ml_features
+                "voltages":   sim_result["voltages"],
+                "currents":   sim_result["currents"],
+                "components": circuit_dict.get("components", []),
             },
             error=None
         )

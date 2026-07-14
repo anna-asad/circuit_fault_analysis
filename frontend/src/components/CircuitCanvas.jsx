@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import ReactFlow, {
   Controls,
   Background,
@@ -160,16 +160,7 @@ function ComponentNode({ id, data, mode }) {
       <NodeTerminals />
       <div className="circuit-node-content component-content">
         <div className="component-visual-container">
-          <img 
-            src={`/components/${componentType}.png`}
-            alt={componentType}
-            className="component-image"
-            onError={(e) => {
-              e.target.style.display = 'none';
-              e.target.nextSibling.style.display = 'block';
-            }}
-          />
-          <div className="component-svg-fallback" style={{display: 'none'}}>
+          <div className="component-svg-fallback visible">
             {COMPONENT_SVGS[componentType]}
           </div>
         </div>
@@ -222,6 +213,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [reactFlowInstance, setReactFlowInstance] = useState(null);
+  const reactFlowRef = useRef(null);
 
   // Value editing handlers
   const handleEditValue = useCallback((nodeId) => {
@@ -312,10 +304,11 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
     event.preventDefault();
     setShowInstructions(false);
 
-    if (!reactFlowInstance) return;
+    const instance = reactFlowRef.current;
+    if (!instance) return;
 
     const type = event.dataTransfer.getData('application/reactflow');
-    const position = reactFlowInstance.screenToFlowPosition({
+    const position = instance.screenToFlowPosition({
       x: event.clientX,
       y: event.clientY,
     });
@@ -340,7 +333,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
     };
 
     setNodes((nds) => [...nds, newNode]);
-  }, [reactFlowInstance, handleEditValue, handleChangeDraft, handleSaveDraft, handleCancelDraft, setNodes]);
+  }, [handleEditValue, handleChangeDraft, handleSaveDraft, handleCancelDraft, setNodes]);
 
   const onDragOver = useCallback((event) => {
     event.preventDefault();
@@ -401,7 +394,10 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
         onConnect={onConnect}
         onDrop={onDrop}
         onDragOver={onDragOver}
-        onInit={setReactFlowInstance}
+        onInit={(instance) => {
+          setReactFlowInstance(instance);
+          reactFlowRef.current = instance;
+        }}
         nodeTypes={nodeTypes}
         connectionMode="loose"
         fitView

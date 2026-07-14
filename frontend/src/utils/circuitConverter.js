@@ -23,13 +23,43 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     return type && !['junction', 'ground'].includes(type);
   });
 
-  // Build adjacency graph
-  const graph = new Map();
+  // Build adjacency graph.
+  // Each entry maps nodeId → array of neighbor nodeIds (one entry per wire).
+  // We also track which handle each wire uses so we can detect overloaded handles.
+  const graph = new Map();          // nodeId → neighborId[]  (may contain duplicates for multi-wire junctions)
+  const handleEdges = new Map();    // "nodeId::handleId" → count  (max 1 per component pin)
+
   edges.forEach(edge => {
     if (!graph.has(edge.source)) graph.set(edge.source, []);
     if (!graph.has(edge.target)) graph.set(edge.target, []);
     graph.get(edge.source).push(edge.target);
     graph.get(edge.target).push(edge.source);
+
+    // Track handle usage for component nodes only (not junctions/ground which are hubs)
+    const srcType = nodes.find(n => n.id === edge.source)?.data?.componentType;
+    const tgtType = nodes.find(n => n.id === edge.target)?.data?.componentType;
+
+    if (srcType && !['junction', 'ground'].includes(srcType) && edge.sourceHandle) {
+      const key = `${edge.source}::${edge.sourceHandle}`;
+      handleEdges.set(key, (handleEdges.get(key) ?? 0) + 1);
+    }
+    if (tgtType && !['junction', 'ground'].includes(tgtType) && edge.targetHandle) {
+      const key = `${edge.target}::${edge.targetHandle}`;
+      handleEdges.set(key, (handleEdges.get(key) ?? 0) + 1);
+    }
+  });
+
+  // Validate: no component pin should have more than one wire
+  handleEdges.forEach((count, key) => {
+    if (count > 1) {
+      const nodeId = key.split('::')[0];
+      const compNode = nodes.find(n => n.id === nodeId);
+      const typeName = compNode?.data?.componentType ?? nodeId;
+      const handleName = key.split('::')[1] ?? 'pin';
+      throw new Error(
+        `${typeName}: The ${handleName} pin has ${count} wires connected — only 1 wire per pin is allowed.`
+      );
+    }
   });
 
   // Validate ground has at least 1 connection
@@ -43,16 +73,26 @@ export function convertCircuitToBackendFormat(nodes, edges) {
   componentNodes.forEach(comp => {
     const connections = graph.get(comp.id) || [];
     
-    // Components need exactly 2 connections
-    // BUT: if connected to ground, ground doesn't count as a "component terminal connection"
-    // Ground just marks which wire is node '0'
+    // Count non-ground connections by NUMBER OF WIRES, not distinct neighbors.
+    // Two wires to the same component (e.g. resistor wired directly to both ends
+    // of a dc_source) are valid — they connect different pins of that neighbor.
+    // Ground connections don't count toward the required 2 pins.
     const nonGroundConnections = connections.filter(connId => {
       const connNode = nodes.find(n => n.id === connId);
       return connNode?.data?.componentType !== 'ground';
     });
     
     if (nonGroundConnections.length !== 2) {
-      throw new Error(`${comp.data?.componentType} needs exactly 2 terminal connections (ground doesn't count). Has ${nonGroundConnections.length}.`);
+      const typeName = comp.data?.componentType ?? 'Component';
+      if (nonGroundConnections.length < 2) {
+        throw new Error(
+          `${typeName} has only ${nonGroundConnections.length} connection${nonGroundConnections.length === 1 ? '' : 's'} — connect both pins.`
+        );
+      } else {
+        throw new Error(
+          `${typeName} has ${nonGroundConnections.length} connections but needs exactly 2 (one per pin). Check for duplicate wires.`
+        );
+      }
     }
     
     terminalNodes.set(comp.id, [
@@ -107,6 +147,38 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     }
   }
 
+  // Helper: get the ordered list of non-ground neighbors for a component,
+  // preserving duplicates so that two wires to the same neighbor map to
+  // different terminals (t0 and t1).
+  // Index 0 → t0, index 1 → t1 — must stay stable across calls.
+  function getNonGroundNeighborList(nodeId) {
+    const raw = graph.get(nodeId) || [];
+    return raw.filter(id => {
+      const n = nodes.find(node => node.id === id);
+      return n?.data?.componentType !== 'ground';
+    });
+  }
+
+  // Find the index of a specific edge endpoint in the neighbor list.
+  // When two wires go to the same neighbor, we need to distinguish them by
+  // which edge we're currently processing.  We do this by finding the
+  // *first unused* occurrence of the neighbor in the list.
+  // edgeIndexUsed tracks which positions have already been claimed.
+  const edgeIndexUsed = new Map(); // nodeId → Set of used list-positions
+
+  function claimNeighborIndex(nodeId, neighborId) {
+    const list = getNonGroundNeighborList(nodeId);
+    if (!edgeIndexUsed.has(nodeId)) edgeIndexUsed.set(nodeId, new Set());
+    const used = edgeIndexUsed.get(nodeId);
+    for (let i = 0; i < list.length; i++) {
+      if (list[i] === neighborId && !used.has(i)) {
+        used.add(i);
+        return i;
+      }
+    }
+    return -1; // should never happen for a valid circuit
+  }
+
   // Process edges to union terminals/junctions/grounds
   edges.forEach(edge => {
     const sourceNode = nodes.find(n => n.id === edge.source);
@@ -127,39 +199,28 @@ export function convertCircuitToBackendFormat(nodes, edges) {
       const sourceTerminals = terminalNodes.get(edge.source);
       const targetTerminals = terminalNodes.get(edge.target);
       
-      const sourceConnections = graph.get(edge.source).filter(id => {
-        const n = nodes.find(node => node.id === id);
-        return n?.data?.componentType !== 'ground';
-      });
-      const targetConnections = graph.get(edge.target).filter(id => {
-        const n = nodes.find(node => node.id === id);
-        return n?.data?.componentType !== 'ground';
-      });
+      const sourceTerminalIdx = claimNeighborIndex(edge.source, edge.target);
+      const targetTerminalIdx = claimNeighborIndex(edge.target, edge.source);
       
-      const sourceTerminalIdx = sourceConnections.indexOf(edge.target);
-      const targetTerminalIdx = targetConnections.indexOf(edge.source);
-      
-      union(sourceTerminals[sourceTerminalIdx], targetTerminals[targetTerminalIdx]);
+      if (sourceTerminalIdx !== -1 && targetTerminalIdx !== -1) {
+        union(sourceTerminals[sourceTerminalIdx], targetTerminals[targetTerminalIdx]);
+      }
     } else if (sourceIsComponent && !targetIsGround) {
       // Component to junction: union terminal with junction
       const sourceTerminals = terminalNodes.get(edge.source);
-      const sourceConnections = graph.get(edge.source).filter(id => {
-        const n = nodes.find(node => node.id === id);
-        return n?.data?.componentType !== 'ground';
-      });
-      const terminalIdx = sourceConnections.indexOf(edge.target);
+      const terminalIdx = claimNeighborIndex(edge.source, edge.target);
       
-      union(sourceTerminals[terminalIdx], edge.target);
+      if (terminalIdx !== -1) {
+        union(sourceTerminals[terminalIdx], edge.target);
+      }
     } else if (targetIsComponent && !sourceIsGround) {
       // Junction to component: union junction with terminal
       const targetTerminals = terminalNodes.get(edge.target);
-      const targetConnections = graph.get(edge.target).filter(id => {
-        const n = nodes.find(node => node.id === id);
-        return n?.data?.componentType !== 'ground';
-      });
-      const terminalIdx = targetConnections.indexOf(edge.source);
+      const terminalIdx = claimNeighborIndex(edge.target, edge.source);
       
-      union(edge.source, targetTerminals[terminalIdx]);
+      if (terminalIdx !== -1) {
+        union(edge.source, targetTerminals[terminalIdx]);
+      }
     } else if (sourceIsComponent && targetIsGround) {
       // Component to ground: union terminal with ground
       const sourceTerminals = terminalNodes.get(edge.source);
@@ -193,20 +254,26 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     }
   }
 
-  // Assign electrical node names
+  // Assign electrical node names.
+  // Only create a node entry for roots that are actually used by a component
+  // terminal — skip phantom roots that exist only because of internal union-find
+  // bookkeeping on junction/ground nodes that share a group with a terminal.
   const electricalNodeMap = new Map();
   let nodeCounter = 1;
 
-  const allRoots = new Set();
-  allIds.forEach(id => allRoots.add(find(id)));
+  // First pass: collect only the roots that component terminals actually belong to.
+  const usedRoots = new Set();
+  componentNodes.forEach(compNode => {
+    const terminals = terminalNodes.get(compNode.id);
+    if (!terminals) return;
+    terminals.forEach(t => usedRoots.add(find(t)));
+  });
+  // Also include the ground root so node '0' gets assigned.
+  groundNodes.forEach(g => usedRoots.add(find(g.id)));
 
-  allRoots.forEach(root => {
-    // Check if this group contains any ground
-    const hasGround = allIds.some(id => {
-      const node = nodes.find(n => n.id === id);
-      return node && node.data?.componentType === 'ground' && find(id) === root;
-    });
-    
+  usedRoots.forEach(root => {
+    // Check if this group contains any ground node
+    const hasGround = groundNodes.some(g => find(g.id) === root);
     if (hasGround) {
       electricalNodeMap.set(root, '0');
     } else {
@@ -234,8 +301,12 @@ export function convertCircuitToBackendFormat(nodes, edges) {
 
     terminalElectricalNodes.forEach(n => allElectricalNodes.add(n));
 
-    components.push({
-      id: compNode.id.replace(/_/g, ''),
+    // Use the canvas label (V1, R1, C1 …) as the component ID.
+    // Fall back to the mangled ReactFlow ID if no label exists.
+    // Strip any non-ASCII characters (e.g. Ω, µ) that would break the
+    // SPICE file write on Windows if the label somehow contains a unit symbol.
+    const rawId = compNode.data?.label ?? compNode.id.replace(/_/g, '');
+    const cleanId = rawId.replace(/[^\x00-\x7F]/g, '').trim() || `comp${compNode.id.slice(-4)}`;
       type: componentType,
       value: compNode.data?.value || getDefaultValue(componentType),
       nodes: terminalElectricalNodes,

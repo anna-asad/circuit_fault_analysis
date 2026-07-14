@@ -76,9 +76,10 @@ class SimulationRunner:
         # Write netlist to temporary file
         netlist_file = self.temp_dir / f"circuit_{os.getpid()}.cir"
         
-        try:
-            with open(netlist_file, 'w') as f:
-                f.write(netlist)
+        # Write netlist to temporary file — always UTF-8 so Unicode in
+        # component labels or comments never triggers a codec error on Windows.
+        with open(netlist_file, 'w', encoding='utf-8') as f:
+            f.write(netlist)
             
             # Run ngspice in batch mode
             result = subprocess.run(
