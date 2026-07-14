@@ -32,10 +32,13 @@
   flex: 1;
   display: flex;
   overflow: hidden;
+  min-height: 0;
 }
 
 .canvas-container {
   flex: 1;
   background: white;
   position: relative;
+  min-width: 0;
+  min-height: 0;
 }
