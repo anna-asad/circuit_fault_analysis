@@ -67,14 +67,14 @@ function ComponentNode({ id, data, mode }) {
     switch(type) {
       case 'resistor':
         return (
-          <svg className="component-svg" viewBox="0 0 100 30" width="80" height="24">
+          <svg className="component-svg" viewBox="0 0 100 30" preserveAspectRatio="xMidYMid meet">
             <path d="M 0 15 L 15 15 L 20 5 L 30 25 L 40 5 L 50 25 L 60 5 L 70 25 L 80 5 L 85 15 L 100 15" 
                   stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         );
       case 'capacitor':
         return (
-          <svg className="component-svg" viewBox="0 0 100 40" width="60" height="30">
+          <svg className="component-svg" viewBox="0 0 100 40" preserveAspectRatio="xMidYMid meet">
             <line x1="0" y1="20" x2="45" y2="20" stroke="currentColor" strokeWidth="2.5"/>
             <line x1="45" y1="5" x2="45" y2="35" stroke="currentColor" strokeWidth="3"/>
             <line x1="55" y1="5" x2="55" y2="35" stroke="currentColor" strokeWidth="3"/>
@@ -83,18 +83,18 @@ function ComponentNode({ id, data, mode }) {
         );
       case 'inductor':
         return (
-          <svg className="component-svg" viewBox="0 0 100 30" width="80" height="24">
+          <svg className="component-svg" viewBox="0 0 100 30" preserveAspectRatio="xMidYMid meet">
             <path d="M 0 15 L 10 15 Q 10 5, 15 5 Q 20 5, 20 15 Q 20 5, 25 5 Q 30 5, 30 15 Q 30 5, 35 5 Q 40 5, 40 15 Q 40 5, 45 5 Q 50 5, 50 15 Q 50 5, 55 5 Q 60 5, 60 15 Q 60 5, 65 5 Q 70 5, 70 15 Q 70 5, 75 5 Q 80 5, 80 15 Q 80 5, 85 5 Q 90 5, 90 15 L 100 15" 
                   stroke="currentColor" strokeWidth="2.5" fill="none"/>
           </svg>
         );
       case 'dc_source':
         return (
-          <svg className="component-svg" viewBox="0 0 60 60" width="50" height="50">
-            <circle cx="30" cy="30" r="25" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-            <line x1="20" y1="30" x2="28" y2="30" stroke="currentColor" strokeWidth="2.5"/>
-            <line x1="32" y1="30" x2="40" y2="30" stroke="currentColor" strokeWidth="2.5"/>
-            <line x1="36" y1="26" x2="36" y2="34" stroke="currentColor" strokeWidth="2.5"/>
+          <svg className="component-svg" viewBox="0 0 80 40" preserveAspectRatio="xMidYMid meet">
+            <line x1="0" y1="20" x2="25" y2="20" stroke="currentColor" strokeWidth="2.5"/>
+            <line x1="25" y1="8" x2="25" y2="32" stroke="currentColor" strokeWidth="2.5"/>
+            <line x1="35" y1="12" x2="35" y2="28" stroke="currentColor" strokeWidth="3"/>
+            <line x1="35" y1="20" x2="80" y2="20" stroke="currentColor" strokeWidth="2.5"/>
           </svg>
         );
       default:
@@ -541,15 +541,15 @@ function getComponentIcon(type) {
 
 function getNodeStyle(type) {
   const baseStyle = {
-    padding: '10px 14px',
-    borderRadius: '8px',
-    fontSize: '11px',
+    padding: '6px 10px',
+    borderRadius: '6px',
+    fontSize: '10px',
     fontWeight: '600',
-    border: '2px solid #d1d5db',
+    border: '1.5px solid #d1d5db',
     whiteSpace: 'pre-line',
     textAlign: 'center',
-    minWidth: '100px',
-    minHeight: '70px',
+    minWidth: '70px',
+    minHeight: '50px',
     background: '#ffffff',
     color: '#374151',
   };
@@ -557,7 +557,7 @@ function getNodeStyle(type) {
   const styles = {
     'dc_source': {
       ...baseStyle,
-      minWidth: '120px',
+      minWidth: '80px',
     },
     'resistor': {
       ...baseStyle,
@@ -582,8 +582,8 @@ function getNodeStyle(type) {
       background: '#f3f4f6',
       borderColor: '#6b7280',
       color: '#1f2937',
-      minWidth: '56px',
-      minHeight: '56px',
+      minWidth: '50px',
+      minHeight: '50px',
     },
   };
 

@@ -47,7 +47,7 @@
 }
 
 .circuit-node-component {
-  min-width: 90px;
+  min-width: 70px;
 }
 
 .circuit-node-content {
@@ -63,7 +63,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
 }
 
@@ -72,13 +72,13 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 40px;
+  min-height: 28px;
   flex-shrink: 0;
 }
 
 .component-image {
   max-width: 90%;
-  max-height: 40px;
+  max-height: 28px;
   width: auto;
   height: auto;
   object-fit: contain;
@@ -89,6 +89,7 @@
   display: block;
   max-width: 100%;
   height: auto;
+  max-height: 28px;
 }
 
 .component-svg-fallback {
@@ -103,13 +104,13 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex: 1;
   width: 100%;
 }
 
 .component-icon {
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1;
 }
 
@@ -182,37 +183,45 @@
 }
 
 .circuit-node-ground {
-  min-width: 56px;
-  min-height: 56px;
+  min-width: 50px;
+  min-height: 50px;
   padding: 0;
   border-radius: 50%;
 }
 
 .ground-symbol {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   line-height: 1;
 }
 
 .circuit-handle {
-  width: 12px !important;
-  height: 12px !important;
-  border: 2px solid #ffffff !important;
-  background: #1f2937 !important;
+  width: 8px !important;
+  height: 8px !important;
+  border: 1px solid #e5e7eb !important;
+  background: #ffffff !important;
+  opacity: 0.5 !important;
   z-index: 5 !important;
+  transition: opacity 0.2s !important;
+}
+
+.circuit-handle:hover {
+  opacity: 1 !important;
+  background: #3b82f6 !important;
+  border-color: #2563eb !important;
 }
 
 .circuit-handle-left {
-  left: -5px !important;
+  left: -4px !important;
 }
 
 .circuit-handle-right {
-  right: -5px !important;
+  right: -4px !important;
 }
 
 .circuit-handle-left,
 .circuit-handle-right {
-  background: #991b1b !important;
+  background: #ffffff !important;
 }
 
 .value-editor {
@@ -225,12 +234,13 @@
 }
 
 .value-editor-input {
-  width: 80px;
-  padding: 4px 8px;
-  border: 2px solid currentColor;
+  width: 70px;
+  padding: 3px 6px;
+  border: 1.5px solid currentColor;
   border-radius: 4px;
   font: inherit;
   font-weight: 700;
+  font-size: 10px;
   text-align: center;
   background: white;
   color: inherit;
