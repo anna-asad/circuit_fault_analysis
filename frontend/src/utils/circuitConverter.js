@@ -307,6 +307,9 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     // SPICE file write on Windows if the label somehow contains a unit symbol.
     const rawId = compNode.data?.label ?? compNode.id.replace(/_/g, '');
     const cleanId = rawId.replace(/[^\x00-\x7F]/g, '').trim() || `comp${compNode.id.slice(-4)}`;
+
+    components.push({
+      id: cleanId,
       type: componentType,
       value: compNode.data?.value || getDefaultValue(componentType),
       nodes: terminalElectricalNodes,

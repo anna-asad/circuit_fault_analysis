@@ -75,24 +75,24 @@ class SimulationRunner:
         """
         # Write netlist to temporary file
         netlist_file = self.temp_dir / f"circuit_{os.getpid()}.cir"
-        
-        # Write netlist to temporary file — always UTF-8 so Unicode in
-        # component labels or comments never triggers a codec error on Windows.
-        with open(netlist_file, 'w', encoding='utf-8') as f:
-            f.write(netlist)
-            
-            # Run ngspice in batch mode
+
+        try:
+            # Always write UTF-8 — prevents charmap codec errors on Windows
+            # when component labels contain Unicode characters.
+            with open(netlist_file, 'w', encoding='utf-8') as f:
+                f.write(netlist)
+
+            # Run ngspice in batch mode (file is fully closed before this runs)
             result = subprocess.run(
                 [self.ngspice_command, "-b", str(netlist_file)],
                 capture_output=True,
                 text=True,
                 timeout=self.timeout
             )
-            
+
             # Parse output
             if result.returncode == 0:
                 voltages, currents = self._parse_output(result.stdout)
-                
                 return {
                     "success": True,
                     "voltages": voltages,
@@ -108,7 +108,7 @@ class SimulationRunner:
                     "raw_output": result.stdout + "\n" + result.stderr,
                     "error": f"ngspice exited with code {result.returncode}: {result.stderr}"
                 }
-        
+
         except subprocess.TimeoutExpired:
             return {
                 "success": False,
