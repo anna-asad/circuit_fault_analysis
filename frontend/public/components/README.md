@@ -8,6 +8,7 @@ Place your PNG images for circuit components in this directory with the followin
 2. **capacitor.png** - Capacitor symbol (two parallel lines)
 3. **inductor.png** - Inductor symbol (coiled/spiral pattern)
 4. **dc_source.png** - DC voltage source symbol (circle with +/- or battery symbol)
+5. **current_source.png** - Current source symbol (circle with arrow pointing up)
 
 ## Image Specifications:
 

@@ -1,7 +1,8 @@
 import './ComponentSidebar.css';
 
 const components = [
-  { type: 'dc_source', label: 'DC Source', icon: '⚡', unit: 'V' },
+  { type: 'dc_source', label: 'DC Voltage', icon: '⚡', unit: 'V' },
+  { type: 'current_source', label: 'Current Source', icon: '⬆', unit: 'A' },
   { type: 'resistor', label: 'Resistor', icon: '━━', unit: 'Ω' },
   { type: 'capacitor', label: 'Capacitor', icon: '||', unit: 'F' },
   { type: 'inductor', label: 'Inductor', icon: '~~~', unit: 'H' },

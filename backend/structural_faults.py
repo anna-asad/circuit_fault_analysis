@@ -161,9 +161,9 @@ class StructuralFaultDetector:
                     f"Open circuit / broken wire: Nodes {', '.join(isolated_nodes)} have no path to ground"
                 )
         
-        # Check if voltage sources are connected to ground
+        # Check if voltage/current sources are connected to ground
         for component in circuit_data.get("components", []):
-            if component.get("type") == "dc_source":
+            if component.get("type") in ["dc_source", "current_source"]:
                 comp_nodes = component.get("nodes", [])
                 source_connected_to_ground = any(
                     uf.connected(node, ground) for node in comp_nodes
@@ -212,8 +212,8 @@ class StructuralFaultDetector:
                             f"Short circuit across {comp_id}: Voltage collapsed to ~zero ({voltage_drop:.4f}V) - component may be shorted or bypassed"
                         )
                     
-                    # Check if voltage source is shorted (near-zero voltage)
-            if comp_type == "dc_source":
+                    # Check if voltage/current source is shorted (near-zero voltage)
+            if comp_type in ["dc_source", "current_source"]:
                 nodes = component.get("nodes", [])
                 if len(nodes) == 2:
                     v1 = voltages.get(nodes[0], 0)
@@ -323,12 +323,14 @@ class StructuralFaultDetector:
     
     def _check_reversed_polarity(self, circuit_data: Dict):
         """
-        Reversed power source polarity — battery/source connected backwards.
-        Check if DC source positive terminal is connected to ground.
+        Reversed power source polarity — battery/voltage source connected backwards.
+        Check if DC voltage source positive terminal is connected to ground.
+        Note: Current sources don't have polarity issues - only direction matters.
         """
         ground = circuit_data.get("ground", "0")
         
         for component in circuit_data.get("components", []):
+            # Only check voltage sources for polarity - current sources don't have polarity
             if component.get("type") == "dc_source":
                 comp_id = component.get("id")
                 nodes = component.get("nodes", [])
@@ -340,7 +342,7 @@ class StructuralFaultDetector:
                     # If positive terminal is ground, polarity is reversed
                     if positive_node == ground:
                         self.faults.append(
-                            f"Reversed power source polarity: {comp_id} positive terminal connected to ground - battery/source connected backwards"
+                            f"Reversed voltage source polarity: {comp_id} positive terminal connected to ground - battery/source connected backwards"
                         )
                     
                     # Alternative check: if negative is at higher potential than positive

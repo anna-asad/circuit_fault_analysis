@@ -17,6 +17,15 @@ class ComponentSpec:
             "requires_two_terminals": True,
             "terminals": 2
         },
+        "current_source": {
+            "label": "Current Source",
+            "value_min": 1e-6,  # 1 µA
+            "value_max": 10.0,  # 10 A
+            "value_default": 0.012,  # 12 mA
+            "unit": "A",
+            "requires_two_terminals": True,
+            "terminals": 2
+        },
         "resistor": {
             "label": "Resistor",
             "value_min": 1.0,
@@ -164,10 +173,10 @@ class CircuitValidator:
         if len(components) == 0:
             self.errors.append("Circuit must have at least one component")
         
-        # Check for at least one voltage source
-        has_source = any(c.get("type") == "dc_source" for c in components)
+        # Check for at least one voltage or current source
+        has_source = any(c.get("type") in ["dc_source", "current_source"] for c in components)
         if not has_source:
-            self.errors.append("Circuit must have at least one DC voltage source")
+            self.errors.append("Circuit must have at least one DC voltage source or current source")
     
     def _validate_components(self, components: List[Dict]):
         """Validate all components."""

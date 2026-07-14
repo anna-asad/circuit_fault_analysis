@@ -25,6 +25,11 @@
 
 /* Custom node styling is handled in CircuitCanvas.jsx getNodeStyle() */
 
+.react-flow__edge-path {
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+}
+
 .react-flow__node {
   cursor: pointer;
 }
@@ -199,32 +204,33 @@
 }
 
 .circuit-handle {
-  width: 8px !important;
-  height: 8px !important;
-  border: 1px solid #e5e7eb !important;
-  background: #ffffff !important;
-  opacity: 0.5 !important;
+  width: 10px !important;
+  height: 10px !important;
+  border: 1.5px solid #ffffff !important;
+  background: #3b82f6 !important;
+  opacity: 0.8 !important;
   z-index: 5 !important;
-  transition: opacity 0.2s !important;
+  transition: all 0.2s !important;
 }
 
 .circuit-handle:hover {
   opacity: 1 !important;
-  background: #3b82f6 !important;
-  border-color: #2563eb !important;
+  background: #2563eb !important;
+  border-color: #1e40af !important;
+  transform: scale(1.3) !important;
 }
 
 .circuit-handle-left {
-  left: -4px !important;
+  left: -5px !important;
 }
 
 .circuit-handle-right {
-  right: -4px !important;
+  right: -5px !important;
 }
 
 .circuit-handle-left,
 .circuit-handle-right {
-  background: #ffffff !important;
+  background: #3b82f6 !important;
 }
 
 .value-editor {

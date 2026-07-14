@@ -219,6 +219,8 @@ class SimulationRunner:
             
             if comp_type == "dc_source":
                 features["voltage_supply"] = comp_value
+            elif comp_type == "current_source":
+                features["current_supply"] = comp_value
             elif comp_type == "resistor":
                 features["resistor_value"] = comp_value
             elif comp_type == "capacitor":

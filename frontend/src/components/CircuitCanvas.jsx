@@ -42,11 +42,20 @@ const COMPONENT_SVGS = {
       <line x1="35" y1="20" x2="80" y2="20" stroke="currentColor" strokeWidth="2.5"/>
     </svg>
   ),
+  current_source: (
+    <svg className="component-svg" viewBox="0 0 80 50" preserveAspectRatio="xMidYMid meet">
+      <line x1="0" y1="25" x2="20" y2="25" stroke="currentColor" strokeWidth="2.5"/>
+      <circle cx="40" cy="25" r="15" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+      <line x1="60" y1="25" x2="80" y2="25" stroke="currentColor" strokeWidth="2.5"/>
+      <path d="M 40 15 L 40 35 M 35 30 L 40 35 L 45 30" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinejoin="miter"/>
+    </svg>
+  ),
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const DEFAULT_VALUES = {
   dc_source: 5.0,
+  current_source: 0.012,  // 12 mA default
   resistor: 1000,
   capacitor: 1e-7,
   inductor: 1e-6,
@@ -117,11 +126,19 @@ function formatValue(value, type) {
     if (value >= 1e-6) return `${value * 1e6}µH`;
     return `${value * 1e9}nH`;
   }
+  if (type === 'current_source') {
+    if (value >= 1) return `${value}A`;
+    if (value >= 1e-3) return `${value * 1e3}mA`;
+    if (value >= 1e-6) return `${value * 1e6}µA`;
+    return `${value * 1e9}nA`;
+  }
   return value;
 }
 
 function formatNodeValue(type, value) {
-  return type === 'dc_source' ? `${value}V` : formatValue(value, type);
+  if (type === 'dc_source') return `${value}V`;
+  if (type === 'current_source') return formatValue(value, type);
+  return formatValue(value, type);
 }
 
 function getNodeStyle(type) {
@@ -331,7 +348,13 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
     (params) =>
       setEdges((eds) =>
         addEdge(
-          { ...params, type: 'straight', animated: false, style: { stroke: '#1f2937', strokeWidth: 2 } },
+          { 
+            ...params, 
+            type: 'smoothstep',  // Manhattan routing with smooth corners
+            animated: false, 
+            style: { stroke: '#1f2937', strokeWidth: 2 },
+            pathOptions: { borderRadius: 8 }  // Slight rounding for cleaner corners
+          },
           eds
         )
       ),
@@ -474,6 +497,8 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
         onInit={(instance) => { reactFlowRef.current = instance; }}
         nodeTypes={nodeTypes}
         connectionMode="loose"
+        snapToGrid={true}
+        snapGrid={[20, 20]}
         fitView
         // Bug 2 fix: remove ReactFlow's built-in deleteKeyCode so it can't
         // independently fire node-deletion while an input is focused.
@@ -491,7 +516,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
             return '#10b981';
           }}
         />
-        <Background variant="dots" gap={16} size={1} />
+        <Background variant="dots" gap={20} size={1.5} color="#d1d5db" />
       </ReactFlow>
     </div>
   );

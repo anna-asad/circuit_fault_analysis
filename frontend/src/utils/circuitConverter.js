@@ -305,7 +305,7 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     // Fall back to the mangled ReactFlow ID if no label exists.
     // Strip any non-ASCII characters (e.g. Ω, µ) that would break the
     // SPICE file write on Windows if the label somehow contains a unit symbol.
-    const rawId = compNode.data?.label ?? compNode.id.replace(/_/g, '');
+    const rawId = String(compNode.data?.label ?? compNode.id).replace(/_/g, '');
     const cleanId = rawId.replace(/[^\x00-\x7F]/g, '').trim() || `comp${compNode.id.slice(-4)}`;
 
     components.push({
@@ -322,9 +322,9 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     throw new Error('Add at least one component.');
   }
 
-  const hasVoltageSource = components.some(c => c.type === 'dc_source');
-  if (!hasVoltageSource) {
-    throw new Error('Add a DC voltage source (battery).');
+  const hasVoltageOrCurrentSource = components.some(c => c.type === 'dc_source' || c.type === 'current_source');
+  if (!hasVoltageOrCurrentSource) {
+    throw new Error('Add a DC voltage source or current source.');
   }
 
   if (groundNodes.length === 0) {
@@ -350,6 +350,7 @@ export function convertCircuitToBackendFormat(nodes, edges) {
 function getDefaultValue(type) {
   const defaults = {
     'dc_source': 5.0,
+    'current_source': 0.012,
     'resistor': 1000,
     'capacitor': 1e-7,
     'inductor': 1e-6,

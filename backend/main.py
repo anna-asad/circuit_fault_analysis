@@ -44,7 +44,7 @@ app.add_middleware(
 class ComponentModel(BaseModel):
     """Represents a single circuit component."""
     id: str = Field(..., description="Unique component identifier (e.g., 'R1', 'V1')")
-    type: str = Field(..., description="Component type: dc_source, resistor, capacitor, inductor, ground, ammeter, voltmeter")
+    type: str = Field(..., description="Component type: dc_source, current_source, resistor, capacitor, inductor, ground, ammeter, voltmeter")
     value: float = Field(..., description="Component value (resistance, capacitance, voltage, etc.)")
     nodes: List[str] = Field(..., description="Connected node IDs [positive, negative]")
     position: Dict[str, float] = Field(default={"x": 0, "y": 0}, description="Canvas position")

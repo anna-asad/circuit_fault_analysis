@@ -55,6 +55,7 @@ class NetlistGenerator:
         
         SPICE component format:
         - Voltage source: Vname n+ n- DC value
+        - Current source: Iname n+ n- DC value
         - Resistor: Rname n1 n2 value
         - Capacitor: Cname n1 n2 value
         - Inductor: Lname n1 n2 value
@@ -79,6 +80,10 @@ class NetlistGenerator:
         # Generate SPICE line based on component type
         if comp_type == "dc_source":
             # Voltage source: V1 n+ n- DC 5
+            line = f"{spice_name} {node1} {node2} DC {comp_value}"
+        
+        elif comp_type == "current_source":
+            # Current source: I1 n+ n- DC 0.012
             line = f"{spice_name} {node1} {node2} DC {comp_value}"
         
         elif comp_type == "resistor":
@@ -108,6 +113,8 @@ class NetlistGenerator:
 
         if comp_type == "dc_source":
             return comp_id if comp_id[:1].upper() == "V" else f"V{comp_id}"
+        if comp_type == "current_source":
+            return comp_id if comp_id[:1].upper() == "I" else f"I{comp_id}"
         if comp_type == "resistor":
             return comp_id if comp_id[:1].upper() == "R" else f"R{comp_id}"
         if comp_type == "capacitor":
