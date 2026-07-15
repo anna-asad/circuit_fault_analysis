@@ -147,36 +147,35 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     }
   }
 
-  // Helper: get the ordered list of non-ground neighbors for a component,
-  // preserving duplicates so that two wires to the same neighbor map to
-  // different terminals (t0 and t1).
-  // Index 0 → t0, index 1 → t1 — must stay stable across calls.
-  function getNonGroundNeighborList(nodeId) {
-    const raw = graph.get(nodeId) || [];
-    return raw.filter(id => {
-      const n = nodes.find(node => node.id === id);
-      return n?.data?.componentType !== 'ground';
-    });
+  // Map handle IDs to terminal indices
+  // For components: "left" → t0, "right" → t1
+  // This ensures that wires connected to different physical handles
+  // always map to different terminals
+  function handleToTerminalIndex(handleId) {
+    // Handle ID can be "left" or "right" for components
+    if (handleId === 'left') return 0;
+    if (handleId === 'right') return 1;
+    return 0; // fallback
   }
 
-  // Find the index of a specific edge endpoint in the neighbor list.
-  // When two wires go to the same neighbor, we need to distinguish them by
-  // which edge we're currently processing.  We do this by finding the
-  // *first unused* occurrence of the neighbor in the list.
-  // edgeIndexUsed tracks which positions have already been claimed.
-  const edgeIndexUsed = new Map(); // nodeId → Set of used list-positions
-
-  function claimNeighborIndex(nodeId, neighborId) {
-    const list = getNonGroundNeighborList(nodeId);
-    if (!edgeIndexUsed.has(nodeId)) edgeIndexUsed.set(nodeId, new Set());
-    const used = edgeIndexUsed.get(nodeId);
-    for (let i = 0; i < list.length; i++) {
-      if (list[i] === neighborId && !used.has(i)) {
-        used.add(i);
-        return i;
+  // Get the terminal index for a component based on the edge's handle
+  function getTerminalIndexForEdge(edge, nodeId) {
+    const node = nodes.find(n => n.id === nodeId);
+    const nodeType = node?.data?.componentType;
+    
+    // Only use handle-based mapping for component nodes
+    if (nodeType && !['junction', 'ground'].includes(nodeType)) {
+      // Determine which handle this node uses in this edge
+      if (edge.source === nodeId && edge.sourceHandle) {
+        return handleToTerminalIndex(edge.sourceHandle);
+      }
+      if (edge.target === nodeId && edge.targetHandle) {
+        return handleToTerminalIndex(edge.targetHandle);
       }
     }
-    return -1; // should never happen for a valid circuit
+    
+    // Fallback for junctions/ground or missing handle info
+    return 0;
   }
 
   // Process edges to union terminals/junctions/grounds
@@ -199,28 +198,22 @@ export function convertCircuitToBackendFormat(nodes, edges) {
       const sourceTerminals = terminalNodes.get(edge.source);
       const targetTerminals = terminalNodes.get(edge.target);
       
-      const sourceTerminalIdx = claimNeighborIndex(edge.source, edge.target);
-      const targetTerminalIdx = claimNeighborIndex(edge.target, edge.source);
+      const sourceTerminalIdx = getTerminalIndexForEdge(edge, edge.source);
+      const targetTerminalIdx = getTerminalIndexForEdge(edge, edge.target);
       
-      if (sourceTerminalIdx !== -1 && targetTerminalIdx !== -1) {
-        union(sourceTerminals[sourceTerminalIdx], targetTerminals[targetTerminalIdx]);
-      }
+      union(sourceTerminals[sourceTerminalIdx], targetTerminals[targetTerminalIdx]);
     } else if (sourceIsComponent && !targetIsGround) {
       // Component to junction: union terminal with junction
       const sourceTerminals = terminalNodes.get(edge.source);
-      const terminalIdx = claimNeighborIndex(edge.source, edge.target);
+      const terminalIdx = getTerminalIndexForEdge(edge, edge.source);
       
-      if (terminalIdx !== -1) {
-        union(sourceTerminals[terminalIdx], edge.target);
-      }
+      union(sourceTerminals[terminalIdx], edge.target);
     } else if (targetIsComponent && !sourceIsGround) {
       // Junction to component: union junction with terminal
       const targetTerminals = terminalNodes.get(edge.target);
-      const terminalIdx = claimNeighborIndex(edge.target, edge.source);
+      const terminalIdx = getTerminalIndexForEdge(edge, edge.target);
       
-      if (terminalIdx !== -1) {
-        union(edge.source, targetTerminals[terminalIdx]);
-      }
+      union(edge.source, targetTerminals[terminalIdx]);
     } else if (sourceIsComponent && targetIsGround) {
       // Component to ground: union terminal with ground
       const sourceTerminals = terminalNodes.get(edge.source);

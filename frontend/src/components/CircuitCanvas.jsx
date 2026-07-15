@@ -43,11 +43,11 @@ const COMPONENT_SVGS = {
     </svg>
   ),
   current_source: (
-    <svg className="component-svg" viewBox="0 0 80 50" preserveAspectRatio="xMidYMid meet">
-      <line x1="0" y1="25" x2="20" y2="25" stroke="currentColor" strokeWidth="2.5"/>
-      <circle cx="40" cy="25" r="15" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-      <line x1="60" y1="25" x2="80" y2="25" stroke="currentColor" strokeWidth="2.5"/>
-      <path d="M 40 15 L 40 35 M 35 30 L 40 35 L 45 30" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinejoin="miter"/>
+    <svg className="component-svg" viewBox="0 0 100 50" preserveAspectRatio="xMidYMid meet">
+      <line x1="0" y1="25" x2="25" y2="25" stroke="currentColor" strokeWidth="2.5"/>
+      <circle cx="50" cy="25" r="15" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+      <line x1="75" y1="25" x2="100" y2="25" stroke="currentColor" strokeWidth="2.5"/>
+      <path d="M 50 15 L 50 35 M 45 30 L 50 35 L 55 30" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinejoin="miter"/>
     </svg>
   ),
 };
