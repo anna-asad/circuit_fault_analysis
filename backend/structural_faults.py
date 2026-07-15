@@ -186,8 +186,19 @@ class StructuralFaultDetector:
         currents = simulation_result.get("currents", {})
         max_current = max((abs(current) for current in currents.values()), default=0.0)
         
-        # Check for excessive current (> 1A indicates likely short)
+        # Check for excessive current (> 1A indicates likely short) on source components only.
+        # Resistor currents can legitimately exceed 1 A in a simple current-driven loop.
         for source, current in currents.items():
+            component = next(
+                (comp for comp in circuit_data.get("components", []) if comp.get("id") == source),
+                None,
+            )
+            if component and component.get("type") == "current_source":
+                continue
+
+            if not component or component.get("type") != "dc_source":
+                continue
+
             if abs(current) > 1.0:  # 1A threshold
                 self.faults.append(
                     f"Short circuit: Excessive current through {source} ({abs(current):.3f}A) - indicates unintended direct connection"

@@ -101,13 +101,18 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     ]);
   });
 
-  // Allow the ground symbol to act like LTspice's reference marker.
-  // If it is not wired, attach it to the nearest component terminal.
+  // Ground must be explicitly wired to the circuit.
+  // Do not auto-attach it to the nearest terminal.
   const groundReference = groundNodes[0];
   if (groundReference) {
-    const nearestTerminal = findNearestTerminal(groundReference, componentNodes, terminalNodes);
-    if (!nearestTerminal) {
-      throw new Error('Ground could not be placed near any component terminal.');
+    const groundConnections = graph.get(groundReference.id) || [];
+    const hasGroundWire = groundConnections.some(connId => {
+      const connNode = nodes.find(n => n.id === connId);
+      return connNode && connNode.data?.componentType !== 'ground';
+    });
+
+    if (!hasGroundWire) {
+      throw new Error('Ground is not connected to the circuit! Wire ground to a component terminal.');
     }
   }
 
@@ -240,11 +245,14 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     }
   });
 
+  // Ground is only connected through explicit wires.
   if (groundReference) {
-    const nearestTerminal = findNearestTerminal(groundReference, componentNodes, terminalNodes);
-    if (nearestTerminal) {
-      union(groundReference.id, nearestTerminal);
-    }
+    const groundConnections = graph.get(groundReference.id) || [];
+    groundConnections.forEach(connId => {
+      if (connId !== groundReference.id) {
+        union(groundReference.id, connId);
+      }
+    });
   }
 
   // Assign electrical node names.
@@ -349,48 +357,4 @@ function getDefaultValue(type) {
   return defaults[type] || 0;
 }
 
-function findNearestTerminal(groundNode, componentNodes, terminalNodes) {
-  if (!groundNode || componentNodes.length === 0) {
-    return null;
-  }
 
-  const groundPoint = {
-    x: groundNode.position?.x ?? 0,
-    y: groundNode.position?.y ?? 0,
-  };
-
-  let nearestTerminal = null;
-  let nearestDistance = Infinity;
-
-  componentNodes.forEach((componentNode) => {
-    const terminals = terminalNodes.get(componentNode.id);
-    if (!terminals) {
-      return;
-    }
-
-    const centerY = (componentNode.position?.y ?? 0) + 24;
-    const leftTerminal = {
-      id: terminals[0],
-      x: componentNode.position?.x ?? 0,
-      y: centerY,
-    };
-    const rightTerminal = {
-      id: terminals[1],
-      x: (componentNode.position?.x ?? 0) + 120,
-      y: centerY,
-    };
-
-    [leftTerminal, rightTerminal].forEach((terminal) => {
-      const dx = groundPoint.x - terminal.x;
-      const dy = groundPoint.y - terminal.y;
-      const distance = Math.sqrt((dx * dx) + (dy * dy));
-
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearestTerminal = terminal.id;
-      }
-    });
-  });
-
-  return nearestTerminal;
-}

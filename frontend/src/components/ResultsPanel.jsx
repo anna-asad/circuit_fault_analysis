@@ -117,6 +117,7 @@ function ResultsPanel({ results }) {
   const { success, simulation_data, structural_faults, pattern_faults, error } = results;
   const voltages = simulation_data?.voltages ?? {};
   const currents = simulation_data?.currents ?? {};
+  const isNormalPrediction = String(pattern_faults?.predicted_fault ?? '').toLowerCase() === 'normal';
 
   // Debug logging
   console.log('📊 ResultsPanel data:', {
@@ -226,7 +227,7 @@ function ResultsPanel({ results }) {
                 <p className="ml-description">{pattern_faults.description}</p>
 
                 {/* Per-label probabilities from real model */}
-                {pattern_faults.all_probabilities &&
+                {!isNormalPrediction && pattern_faults.all_probabilities &&
                   Object.keys(pattern_faults.all_probabilities).length > 0 && (
                   <div className="ml-probs">
                     {Object.entries(pattern_faults.all_probabilities)
