@@ -176,31 +176,40 @@
 
 
 .circuit-node-junction {
-  width: 18px;
-  height: 18px;
+  width: 8px;
+  height: 8px;
   padding: 0;
   border-radius: 50%;
+  background: #1f2937;
+  border: none;
 }
 
 .junction-dot {
-  width: 10px;
-  height: 10px;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
-  background: #111827;
+  background: #1f2937;
   color: transparent;
 }
 
 .circuit-node-ground {
-  min-width: 50px;
-  min-height: 50px;
-  padding: 0;
-  border-radius: 50%;
+  min-width: 40px;
+  min-height: 60px;
+  padding: 8px 8px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  background: transparent !important;
+  border: none !important;
 }
 
 .ground-symbol {
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 1;
+  text-align: center;
+  margin-top: auto;
 }
 
 .circuit-handle {
@@ -218,6 +227,21 @@
   background: #2563eb !important;
   border-color: #1e40af !important;
   transform: scale(1.3) !important;
+}
+
+/* Hide handles on junctions - they're invisible unless you hover the junction */
+.circuit-node-junction .circuit-handle {
+  opacity: 0 !important;
+  width: 6px !important;
+  height: 6px !important;
+}
+
+.circuit-node-junction:hover .circuit-handle {
+  opacity: 0.6 !important;
+}
+
+.circuit-node-junction .circuit-handle:hover {
+  opacity: 1 !important;
 }
 
 .circuit-handle-left {

@@ -77,12 +77,12 @@ const NODE_STYLES = {
     color: '#374151',
   },
   junction: {
-    padding: '6px',
+    padding: '0',
     borderRadius: '50%',
-    width: '12px',
-    height: '12px',
+    width: '8px',
+    height: '8px',
     background: '#1f2937',
-    border: '2px solid #1f2937',
+    border: 'none',
     color: 'transparent',
   },
   ground: {
@@ -266,9 +266,12 @@ function JunctionNode({ data }) {
   );
 }
 
+// ── GroundNode ─────────────────────────────────────────────────────────────
 function GroundNode({ data }) {
   return (
     <div className="circuit-node circuit-node-ground" style={data.style}>
+      {/* Ground has only ONE handle at the bottom - connects to any wire */}
+      <Handle type="source" position={Position.Top} id="top" className="circuit-handle" />
       <div className="ground-symbol">{data.label}</div>
     </div>
   );
@@ -350,15 +353,201 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
         addEdge(
           { 
             ...params, 
-            type: 'smoothstep',  // Manhattan routing with smooth corners
+            type: 'straight', // Use straight lines like LTspice for clean circuits
             animated: false, 
             style: { stroke: '#1f2937', strokeWidth: 2 },
-            pathOptions: { borderRadius: 8 }  // Slight rounding for cleaner corners
           },
           eds
         )
       ),
     [setEdges]
+  );
+
+  // ── Handle ground connecting to edges (wires) ────────────────────────────
+  const onConnectStart = useCallback((event, { nodeId, handleId }) => {
+    // Store the connection start info
+    console.log('🔗 Connection started from:', nodeId, handleId);
+    window.connectionStart = { nodeId, handleId };
+  }, []);
+
+  const onConnectEnd = useCallback(
+    (event) => {
+      console.log('🔗 Connection ended', { hasStart: !!window.connectionStart });
+      
+      const instance = reactFlowRef.current;
+      if (!instance || !window.connectionStart) return;
+
+      const { nodeId: startNodeId } = window.connectionStart;
+      const startNode = nodes.find(n => n.id === startNodeId);
+      
+      console.log('🔗 Start node:', startNode?.data?.componentType);
+      
+      // Only handle this for ground nodes
+      if (startNode?.data?.componentType !== 'ground') {
+        window.connectionStart = null;
+        return;
+      }
+
+      console.log('⏚ Ground connection detected!');
+
+      // Get the position where the user released the connection
+      const { clientX, clientY } = event;
+      const position = instance.screenToFlowPosition({ x: clientX, y: clientY });
+      
+      console.log('📍 Release position:', position);
+
+      // Check if we're near an edge (wire) - calculate distance to line segment
+      const threshold = 80;
+      let nearestEdge = null;
+      let minDistance = Infinity;
+      let nearestPoint = null;
+
+      edges.forEach(edge => {
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        const targetNode = nodes.find(n => n.id === edge.target);
+        
+        if (!sourceNode || !targetNode) return;
+
+        // Get actual node dimensions and handle positions
+        // Components are roughly 70-80px wide, 50px tall
+        // Handles are at left/right edges
+        const getHandlePosition = (node, handleId) => {
+          const baseX = node.position.x;
+          const baseY = node.position.y;
+          
+          // Estimate based on handle ID
+          if (handleId === 'left') return { x: baseX, y: baseY + 25 };
+          if (handleId === 'right') return { x: baseX + 70, y: baseY + 25 };
+          if (handleId === 'top') return { x: baseX + 35, y: baseY };
+          if (handleId === 'bottom') return { x: baseX + 35, y: baseY + 50 };
+          
+          // Default: center of node
+          return { x: baseX + 35, y: baseY + 25 };
+        };
+
+        const sourcePos = getHandlePosition(sourceNode, edge.sourceHandle);
+        const targetPos = getHandlePosition(targetNode, edge.targetHandle);
+        
+        // Calculate closest point on line segment
+        const x1 = sourcePos.x;
+        const y1 = sourcePos.y;
+        const x2 = targetPos.x;
+        const y2 = targetPos.y;
+        
+        const A = position.x - x1;
+        const B = position.y - y1;
+        const C = x2 - x1;
+        const D = y2 - y1;
+        
+        const dot = A * C + B * D;
+        const lenSq = C * C + D * D;
+        let param = -1;
+        
+        if (lenSq !== 0) {
+          param = dot / lenSq;
+        }
+        
+        let xx, yy;
+        
+        if (param < 0) {
+          xx = x1;
+          yy = y1;
+        } else if (param > 1) {
+          xx = x2;
+          yy = y2;
+        } else {
+          xx = x1 + param * C;
+          yy = y1 + param * D;
+        }
+        
+        const dx = position.x - xx;
+        const dy = position.y - yy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        console.log(`  Edge ${edge.source.slice(-6)}->${edge.target.slice(-6)}: distance = ${dist.toFixed(1)}px`);
+
+        if (dist < threshold && dist < minDistance) {
+          minDistance = dist;
+          nearestEdge = edge;
+          nearestPoint = { x: xx, y: yy };
+        }
+      });
+
+      console.log('🎯 Nearest edge:', nearestEdge?.id, 'distance:', minDistance.toFixed(1));
+
+      // If we found a nearby edge, insert a junction ON the line to preserve wire shape
+      if (nearestEdge) {
+        console.log('✅ Creating junction on edge:', nearestEdge.id);
+        
+        // Place junction at the nearest point ON the wire line (not at release position)
+        // This ensures the wire path stays straight through the junction
+        const junctionId = `junction_auto_${Date.now()}`;
+        const junctionNode = {
+          id: junctionId,
+          type: 'junctionNode',
+          position: {
+            x: nearestPoint.x - 4, // Use calculated nearest point on the line
+            y: nearestPoint.y - 4,
+          },
+          data: {
+            label: '●',
+            componentType: 'junction',
+            componentId: junctionId,
+          },
+          style: NODE_STYLES.junction,
+        };
+
+        // Batch both updates together
+        setNodes((nds) => [...nds, junctionNode]);
+        
+        setEdges((eds) => {
+          // Remove the original edge
+          const filtered = eds.filter(e => e.id !== nearestEdge.id);
+          
+          // Add three new edges with EXACT same handles as original
+          return [
+            ...filtered,
+            // Split 1: preserve exact path source -> junction
+            {
+              id: `${nearestEdge.source}-${junctionId}`,
+              source: nearestEdge.source,
+              sourceHandle: nearestEdge.sourceHandle, // Same as original
+              target: junctionId,
+              targetHandle: nearestEdge.sourceHandle, // Match original direction
+              type: 'straight',
+              style: nearestEdge.style || { stroke: '#1f2937', strokeWidth: 2 },
+            },
+            // Split 2: preserve exact path junction -> target  
+            {
+              id: `${junctionId}-${nearestEdge.target}`,
+              source: junctionId,
+              sourceHandle: nearestEdge.targetHandle, // Match original direction
+              target: nearestEdge.target,
+              targetHandle: nearestEdge.targetHandle, // Same as original
+              type: 'straight',
+              style: nearestEdge.style || { stroke: '#1f2937', strokeWidth: 2 },
+            },
+            // Ground connection
+            {
+              id: `${startNodeId}-${junctionId}`,
+              source: startNodeId,
+              sourceHandle: 'top',
+              target: junctionId,
+              type: 'smoothstep',
+              style: { stroke: '#1f2937', strokeWidth: 2 },
+              pathOptions: { borderRadius: 8 },
+            },
+          ];
+        });
+        
+        console.log('✨ Junction created at', nearestPoint);
+      } else {
+        console.log('❌ No edge found near release point');
+      }
+
+      window.connectionStart = null;
+    },
+    [nodes, edges, setNodes, setEdges]
   );
 
   // ── Drop from sidebar ─────────────────────────────────────────────────────
@@ -430,6 +619,17 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
+  // Helper function to rotate handle IDs 90° clockwise
+  const rotateHandle = useCallback((handle) => {
+    const rotationMap = {
+      'left': 'top',
+      'top': 'right',
+      'right': 'bottom',
+      'bottom': 'left',
+    };
+    return rotationMap[handle] || handle;
+  }, []);
+
   // ── Keyboard handler ──────────────────────────────────────────────────────
   const onKeyDown = useCallback(
     (event) => {
@@ -448,18 +648,20 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
 
       // ── Ctrl+R: rotate selected component 90° clockwise ──────────────────
       if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
-        // Prevent the browser's "reload page" shortcut
         event.preventDefault();
 
+        // Track which nodes are being rotated
+        const rotatedNodeIds = new Set();
+        
         setNodes((nds) =>
           nds.map((n) => {
-            // Only rotate selected component nodes (not junctions or ground)
             if (!n.selected) return n;
             const ctype = n.data?.componentType;
             if (!ctype || ctype === 'junction' || ctype === 'ground') return n;
 
+            rotatedNodeIds.add(n.id);
             const currentRotation = n.data?.rotation ?? 0;
-            const nextRotation    = (currentRotation + 90) % 360;
+            const nextRotation = (currentRotation + 90) % 360;
 
             return {
               ...n,
@@ -467,10 +669,38 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
             };
           })
         );
+
+        // Remap edges connected to rotated components to use the correct physical handles
+        setTimeout(() => {
+          setEdges((eds) =>
+            eds.map((edge) => {
+              let newEdge = { ...edge };
+              
+              // Check if source is rotated
+              const sourceNode = nodes.find((n) => n.id === edge.source);
+              if (sourceNode && rotatedNodeIds.has(edge.source)) {
+                if (edge.sourceHandle) {
+                  newEdge.sourceHandle = rotateHandle(edge.sourceHandle);
+                }
+              }
+              
+              // Check if target is rotated
+              const targetNode = nodes.find((n) => n.id === edge.target);
+              if (targetNode && rotatedNodeIds.has(edge.target)) {
+                if (edge.targetHandle) {
+                  newEdge.targetHandle = rotateHandle(edge.targetHandle);
+                }
+              }
+              
+              return newEdge;
+            })
+          );
+        }, 10);
+
         return;
       }
     },
-    [setNodes, setEdges]
+    [setNodes, setEdges, nodes, rotateHandle]
   );
 
   // ── nodeTypes (stable reference — recreated only when mode changes) ───────
@@ -504,11 +734,10 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
     >
       {showInstructions && !isReadOnly && (
         <div className="canvas-instructions">
-          💡 <strong>Build circuits:</strong>{' '}
-          Wire components from any terminal |
-          Use <strong>Junctions (●)</strong> for splits |
-          Place <strong>Ground (⏚)</strong> anywhere |
-          <kbd>Del</kbd> to remove | <kbd>Ctrl+R</kbd> to rotate
+          💡 <strong>Quick start:</strong>{' '}
+          Wire components together |
+          Connect <strong>Ground (⏚)</strong> directly to any wire (auto-creates junction) |
+          <kbd>Del</kbd> to delete | <kbd>Ctrl+R</kbd> to rotate
         </div>
       )}
 
@@ -518,6 +747,8 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onConnectStart={onConnectStart}
+        onConnectEnd={onConnectEnd}
         onDrop={onDrop}
         onDragOver={onDragOver}
         onInit={(instance) => { reactFlowRef.current = instance; }}
@@ -526,9 +757,6 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
         snapToGrid={true}
         snapGrid={[20, 20]}
         fitView
-        // Bug 2 fix: remove ReactFlow's built-in deleteKeyCode so it can't
-        // independently fire node-deletion while an input is focused.
-        // Our onKeyDown handler (which checks activeElement) takes over instead.
         deleteKeyCode={null}
         nodesDraggable={!isReadOnly}
         nodesConnectable={!isReadOnly}

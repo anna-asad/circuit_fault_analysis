@@ -67,6 +67,25 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     throw new Error('Add a Ground reference point (⏚).');
   }
 
+  // Check that ground is connected, preferably to junctions
+  groundNodes.forEach(groundNode => {
+    const connections = graph.get(groundNode.id) || [];
+    
+    if (connections.length === 0) {
+      throw new Error('Ground not connected. Place a Junction (●) on a wire, then connect Ground to it.');
+    }
+
+    // Warn if ground connects directly to component (will use up one of its 2 terminals)
+    connections.forEach(connId => {
+      const connNode = nodes.find(n => n.id === connId);
+      const connType = connNode?.data?.componentType;
+      
+      if (connType && !['junction'].includes(connType)) {
+        console.warn('⚠️ Ground connected directly to a component. Best practice: connect ground to a Junction (●) placed on a wire.');
+      }
+    });
+  });
+
   // Create unique IDs for each component terminal
   const terminalNodes = new Map();
   
@@ -220,22 +239,15 @@ export function convertCircuitToBackendFormat(nodes, edges) {
       
       union(edge.source, targetTerminals[terminalIdx]);
     } else if (sourceIsComponent && targetIsGround) {
-      // Component to ground: union terminal with ground
+      // Component to ground: union the appropriate terminal with ground
       const sourceTerminals = terminalNodes.get(edge.source);
-      const sourceConnections = graph.get(edge.source).filter(id => {
-        const n = nodes.find(node => node.id === id);
-        return n?.data?.componentType !== 'ground';
-      });
-      // Ground connects to the "other" terminals that aren't the main 2
-      // Actually, ground connects to whichever wire it's attached to
-      // We need to find which terminal this ground is near
-      
-      // For now: union ground with ALL terminals of this component
-      sourceTerminals.forEach(term => union(term, edge.target));
+      const terminalIdx = getTerminalIndexForEdge(edge, edge.source);
+      union(sourceTerminals[terminalIdx], edge.target);
     } else if (targetIsComponent && sourceIsGround) {
-      // Ground to component: union ground with terminal
+      // Ground to component: union ground with the appropriate terminal
       const targetTerminals = terminalNodes.get(edge.target);
-      targetTerminals.forEach(term => union(edge.source, term));
+      const terminalIdx = getTerminalIndexForEdge(edge, edge.target);
+      union(edge.source, targetTerminals[terminalIdx]);
     } else if (!sourceIsGround && !targetIsGround) {
       // Junction to junction: union them
       union(edge.source, edge.target);
@@ -290,7 +302,7 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     const componentType = compNode.data?.componentType;
     const terminals = terminalNodes.get(compNode.id);
     
-    const terminalElectricalNodes = terminals.map(t => {
+    let terminalElectricalNodes = terminals.map(t => {
       const root = find(t);
       return electricalNodeMap.get(root);
     });
@@ -298,6 +310,20 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     // Check for short
     if (terminalElectricalNodes[0] === terminalElectricalNodes[1]) {
       throw new Error(`${componentType}: Both terminals at same node (short circuit).`);
+    }
+
+    // IMPORTANT: For voltage/current sources, rotation affects polarity!
+    // At 0°:   left=positive(+),  right=negative(-)
+    // At 180°: left=negative(-),  right=positive(+)  
+    // We need to swap the nodes array to reflect the physical rotation
+    const rotation = compNode.data?.rotation || 0;
+    const isSource = componentType === 'dc_source' || componentType === 'current_source';
+    
+    if (isSource && (rotation === 180 || rotation === 270)) {
+      // Rotation of 180° or 270° flips the polarity
+      // Swap the terminal nodes so [0] is still positive in the netlist
+      terminalElectricalNodes = [terminalElectricalNodes[1], terminalElectricalNodes[0]];
+      console.log(`🔄 ${componentType} rotated ${rotation}° - terminals swapped for correct polarity`);
     }
 
     terminalElectricalNodes.forEach(n => allElectricalNodes.add(n));
@@ -312,7 +338,8 @@ export function convertCircuitToBackendFormat(nodes, edges) {
       type: componentType,
       value: compNode.data?.value || getDefaultValue(componentType),
       nodes: terminalElectricalNodes,
-      position: compNode.position
+      position: compNode.position,
+      rotation: rotation, // Include rotation in component data
     });
   });
 
@@ -356,5 +383,3 @@ function getDefaultValue(type) {
   };
   return defaults[type] || 0;
 }
-
-
