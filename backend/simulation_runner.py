@@ -150,6 +150,12 @@ class SimulationRunner:
         
         lines = output.split('\n')
         
+        # Debug: log the raw output for troubleshooting
+        print("=" * 60)
+        print("🔍 RAW NGSPICE OUTPUT:")
+        print(output)
+        print("=" * 60)
+        
         for i, line in enumerate(lines):
             line = line.strip()
             
@@ -163,6 +169,7 @@ class SimulationRunner:
                 node = voltage_match.group(1)
                 value = float(voltage_match.group(2))
                 voltages[node] = value
+                print(f"  ✓ Parsed voltage: V({node}) = {value}")
                 continue
             
             # Parse node voltages - Format 2: "n1 = 5.000000e+00" (Windows ngspice_con format)
@@ -175,6 +182,7 @@ class SimulationRunner:
                 # Skip special keywords that aren't node names
                 if node.lower() not in ['allv', 'alli', 'all', 'temp', 'tnom']:
                     voltages[node] = value
+                    print(f"  ✓ Parsed voltage: V({node}) = {value}")
                 continue
             
             # Parse currents - Format 1: "i(v1) = 5.000000e-03"
@@ -183,6 +191,7 @@ class SimulationRunner:
                 source = current_match.group(1).upper()
                 value = float(current_match.group(2))
                 currents[source] = value
+                print(f"  ✓ Parsed current: I({source}) = {value}")
                 continue
             
             # Parse currents - Format 2: "v1#branch = -5.000000e-03" (Windows ngspice_con format)
@@ -191,7 +200,20 @@ class SimulationRunner:
                 source = branch_match.group(1).upper()
                 value = float(branch_match.group(2))
                 currents[source] = value
+                print(f"  ✓ Parsed current: I({source}) = {value}")
                 continue
+            
+            # Parse currents - Format 3: "@r1[i] = 5.000000e-03" (device current format)
+            device_current_match = re.search(r'@([a-z]\w*)\[i\]\s*=\s*([-+]?[\d.]+(?:[eE][-+]?\d+)?)', line, re.IGNORECASE)
+            if device_current_match:
+                device = device_current_match.group(1).upper()
+                value = float(device_current_match.group(2))
+                currents[device] = value
+                print(f"  ✓ Parsed device current: I({device}) = {value}")
+                continue
+        
+        print(f"📊 PARSED RESULTS: {len(voltages)} voltages, {len(currents)} currents")
+        print("=" * 60)
         
         return voltages, currents
     

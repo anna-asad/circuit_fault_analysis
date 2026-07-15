@@ -118,6 +118,14 @@ function ResultsPanel({ results }) {
   const voltages = simulation_data?.voltages ?? {};
   const currents = simulation_data?.currents ?? {};
 
+  // Debug logging
+  console.log('📊 ResultsPanel data:', {
+    success,
+    voltages,
+    currents,
+    simulation_data,
+  });
+
   // Human-readable descriptions for each node and current source
   const nodeDesc    = buildNodeDescriptions(voltages, simulation_data);
   const currentDesc = (src) => buildCurrentLabel(src, simulation_data);
@@ -129,40 +137,66 @@ function ResultsPanel({ results }) {
       {success ? (
         <div className="results-content">
 
-          {/* Voltages */}
-          {Object.keys(voltages).length > 0 && (
-            <section className="result-section">
-              <h4 className="section-title">Node Voltages</h4>
+          {/* Voltages - Always show section, even if empty */}
+          <section className="result-section">
+            <h4 className="section-title">⚡ Node Voltages</h4>
+            {Object.keys(voltages).length > 0 ? (
               <div className="data-grid">
-                {Object.entries(voltages).map(([node, v]) => (
-                  <div key={node} className="data-item">
-                    <div className="data-label-wrap">
-                      <span className="data-label">{nodeDesc[node] ?? node}</span>
-                      <span className="data-subtext">V({node})</span>
+                {Object.entries(voltages)
+                  .sort(([a], [b]) => {
+                    // Sort: 0 (ground) first, then n1, n2, n3... numerically
+                    if (a === '0') return -1;
+                    if (b === '0') return 1;
+                    const numA = parseInt(a.replace(/\D/g, '')) || 0;
+                    const numB = parseInt(b.replace(/\D/g, '')) || 0;
+                    return numA - numB;
+                  })
+                  .map(([node, v]) => (
+                    <div key={node} className="data-item">
+                      <div className="data-label-wrap">
+                        <span className="data-label" title={`Node ${node}`}>
+                          {nodeDesc[node] ?? node}
+                        </span>
+                        <span className="data-subtext">V({node})</span>
+                      </div>
+                      <span className={`data-value${v === 0 ? ' data-value-zero' : ''}`}>
+                        {fmtVoltage(v)}
+                      </span>
                     </div>
-                    <span className={`data-value${v === 0 ? ' data-value-zero' : ''}`}>
-                      {fmtVoltage(v)}
-                    </span>
-                  </div>
-                ))}
+                  ))}
               </div>
-            </section>
-          )}
+            ) : (
+              <div className="empty-data-state">
+                <p>No node voltage data available</p>
+                <small>Check that ngspice simulation completed successfully</small>
+              </div>
+            )}
+          </section>
 
-          {/* Currents */}
-          {Object.keys(currents).length > 0 && (
-            <section className="result-section">
-              <h4 className="section-title">Branch Currents</h4>
+          {/* Currents - Always show section, even if empty */}
+          <section className="result-section">
+            <h4 className="section-title">🔌 Branch Currents</h4>
+            {Object.keys(currents).length > 0 ? (
               <div className="data-grid">
                 {Object.entries(currents).map(([src, a]) => (
                   <div key={src} className="data-item">
-                    <span className="data-label">I({currentDesc(src)})</span>
+                    <div className="data-label-wrap">
+                      <span className="data-label" title={`Current through ${src}`}>
+                        {currentDesc(src)}
+                      </span>
+                      <span className="data-subtext">I({src})</span>
+                    </div>
                     <span className="data-value">{fmtCurrent(a)}</span>
                   </div>
                 ))}
               </div>
-            </section>
-          )}
+            ) : (
+              <div className="empty-data-state">
+                <p>No current data available</p>
+                <small>Check that ngspice simulation completed successfully</small>
+              </div>
+            )}
+          </section>
 
           {/* Structural faults */}
           {structural_faults && structural_faults.length > 0 && (

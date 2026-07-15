@@ -31,8 +31,8 @@ class NetlistGenerator:
         for component in components:
             self._add_component(component)
         
-        # Control section (DC operating point analysis)
-        self._add_control_section()
+        # Control section with explicit prints (better for batch mode)
+        self._add_control_section_with_explicit_prints(circuit_data)
         
         # Footer
         self._add_footer()
@@ -131,15 +131,64 @@ class NetlistGenerator:
         DC operating point (.op) analysis:
         - Calculates steady-state voltages at all nodes
         - Calculates currents through voltage sources
+        
+        For batch mode, we need explicit print statements for each value.
         """
         self.netlist_lines.extend([
             "",
             "* Control section",
             ".control",
             "  op",  # DC operating point analysis
-            "  print all",  # Print all voltages and currents
-            "  print allv",  # Print all node voltages
-            "  print alli",  # Print all currents
+            "  print all",  # Print all node voltages
+            "  print allv",  # Explicitly print all voltages
+            "  print alli",  # Explicitly print all currents
+            ".endc",
+            ""
+        ])
+    
+    def _add_control_section_with_explicit_prints(self, circuit_data: Dict):
+        """
+        Alternative control section with explicit print statements.
+        This ensures output in batch mode.
+        """
+        components = circuit_data.get("components", [])
+        nodes = circuit_data.get("nodes", [])
+        
+        self.netlist_lines.extend([
+            "",
+            "* Control section",
+            ".control",
+            "  op",  # DC operating point analysis
+            ""
+        ])
+        
+        # Explicitly print each node voltage
+        for node in nodes:
+            self.netlist_lines.append(f"  print v({node})")
+        
+        # Print current through voltage sources (dc_source)
+        # Current sources define the current, so we print it differently
+        for comp in components:
+            comp_type = comp.get("type", "")
+            comp_id = comp.get("id", "")
+            spice_name = self._get_spice_name(comp_type, comp_id)
+            
+            if not spice_name:
+                continue
+            
+            if comp_type == "dc_source":
+                # For voltage sources, print the branch current
+                self.netlist_lines.append(f"  print i({spice_name})")
+            elif comp_type == "current_source":
+                # For current sources, the current is the defined value
+                # But we can still query the branch current through it
+                self.netlist_lines.append(f"  print i({spice_name})")
+            elif comp_type == "resistor":
+                # Can also print current through resistors using @device[branch]
+                # Format: @r1[i] gives current through R1
+                self.netlist_lines.append(f"  print @{spice_name}[i]")
+        
+        self.netlist_lines.extend([
             ".endc",
             ""
         ])

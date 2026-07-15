@@ -294,12 +294,10 @@ export function convertCircuitToBackendFormat(nodes, edges) {
 
     terminalElectricalNodes.forEach(n => allElectricalNodes.add(n));
 
-    // Use the canvas label (V1, R1, C1 …) as the component ID.
-    // Fall back to the mangled ReactFlow ID if no label exists.
-    // Strip any non-ASCII characters (e.g. Ω, µ) that would break the
-    // SPICE file write on Windows if the label somehow contains a unit symbol.
-    const rawId = String(compNode.data?.label ?? compNode.id).replace(/_/g, '');
-    const cleanId = rawId.replace(/[^\x00-\x7F]/g, '').trim() || `comp${compNode.id.slice(-4)}`;
+    // Use the componentId from node data if available, otherwise use the label
+    // This ensures unique IDs even when components have the same value
+    const componentId = compNode.data?.componentId || compNode.data?.label || compNode.id;
+    const cleanId = String(componentId).replace(/[^\x00-\x7F]/g, '').trim() || `comp${compNode.id.slice(-4)}`;
 
     components.push({
       id: cleanId,

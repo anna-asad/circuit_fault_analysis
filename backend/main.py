@@ -20,6 +20,26 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# ============================================================================
+# Global Model Cache - Load once at startup, reuse for all requests
+# ============================================================================
+_fault_analyzer: FaultAnalyzer = None
+
+@app.on_event("startup")
+async def load_models():
+    """Load ML model once at startup to avoid reloading on every request."""
+    global _fault_analyzer
+    print("🔄 Loading ML model...")
+    _fault_analyzer = FaultAnalyzer()
+    if _fault_analyzer.is_model_loaded():
+        print("✅ ML model loaded successfully")
+    else:
+        print("⚠️  ML model not available (install dependencies and run train.py)")
+
+def get_fault_analyzer() -> FaultAnalyzer:
+    """Get the cached fault analyzer instance."""
+    return _fault_analyzer
+
 # CORS middleware for React frontend
 app.add_middleware(
     CORSMiddleware,
@@ -124,9 +144,9 @@ async def health_check():
     runner = SimulationRunner()
     ngspice_installed, ngspice_version = runner.check_ngspice_installed()
     
-    # Check ML model
-    analyzer = FaultAnalyzer()
-    ml_model_loaded = analyzer.is_model_loaded()
+    # Check ML model (use cached instance)
+    analyzer = get_fault_analyzer()
+    ml_model_loaded = analyzer.is_model_loaded() if analyzer else False
     
     return {
         "status": "healthy",
@@ -257,14 +277,28 @@ async def simulate_circuit(circuit: CircuitModel):
         all_structural_faults = warnings + structural_faults_detected
 
         # Step 5: ML pattern fault classification
-        # Uses the real trained model — features are extracted inside analyze()
-        # from the full circuit definition + raw ngspice voltages/currents.
-        analyzer = FaultAnalyzer()
-        pattern_faults = analyzer.analyze(
-            circuit_data    = circuit_dict,
-            node_voltages   = sim_result["voltages"],
-            branch_currents = sim_result["currents"],
-        )
+        # Only run ML model if we have valid voltage/current data
+        pattern_faults = None
+        voltages = sim_result.get("voltages", {})
+        currents = sim_result.get("currents", {})
+        
+        if voltages or currents:
+            # We have some simulation data, run ML analysis
+            analyzer = get_fault_analyzer()
+            pattern_faults = analyzer.analyze(
+                circuit_data    = circuit_dict,
+                node_voltages   = voltages,
+                branch_currents = currents,
+            )
+        else:
+            # No simulation data - provide a clear message
+            pattern_faults = {
+                "predicted_fault": "No Data",
+                "confidence": 0.0,
+                "all_probabilities": {},
+                "fault_type": "no_simulation_data",
+                "description": "Simulation completed but returned no voltage or current data. This may indicate an ngspice parsing issue or an unusual circuit configuration.",
+            }
 
         return SimulationResponse(
             success=True,
@@ -272,8 +306,8 @@ async def simulate_circuit(circuit: CircuitModel):
             structural_faults=all_structural_faults,
             pattern_faults=pattern_faults,
             simulation_data={
-                "voltages":   sim_result["voltages"],
-                "currents":   sim_result["currents"],
+                "voltages":   voltages,
+                "currents":   currents,
                 "components": circuit_dict.get("components", []),
             },
             error=None

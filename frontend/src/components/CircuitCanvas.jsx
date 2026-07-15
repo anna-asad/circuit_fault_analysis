@@ -377,15 +377,41 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
       const value    = DEFAULT_VALUES[type] ?? 0;
       const nodeType = type === 'ground' ? 'groundNode' : type === 'junction' ? 'junctionNode' : 'componentNode';
 
+      // Generate unique component ID based on type and count
+      let componentId;
+      if (type === 'dc_source') {
+        const vCount = nodes.filter(n => n.data?.componentType === 'dc_source').length;
+        componentId = `V${vCount + 1}`;
+      } else if (type === 'current_source') {
+        const iCount = nodes.filter(n => n.data?.componentType === 'current_source').length;
+        componentId = `I${iCount + 1}`;
+      } else if (type === 'resistor') {
+        const rCount = nodes.filter(n => n.data?.componentType === 'resistor').length;
+        componentId = `R${rCount + 1}`;
+      } else if (type === 'capacitor') {
+        const cCount = nodes.filter(n => n.data?.componentType === 'capacitor').length;
+        componentId = `C${cCount + 1}`;
+      } else if (type === 'inductor') {
+        const lCount = nodes.filter(n => n.data?.componentType === 'inductor').length;
+        componentId = `L${lCount + 1}`;
+      } else if (type === 'ground') {
+        componentId = '⏚';
+      } else if (type === 'junction') {
+        componentId = '●';
+      } else {
+        componentId = `${type}_${Date.now()}`;
+      }
+
       const newNode = {
         id: `${type}_${Date.now()}`,
         type: nodeType,
         position,
         data: {
-          label: type === 'ground' ? '⏚' : type === 'junction' ? '●' : formatNodeValue(type, value),
+          label: componentId,  // Display the component ID as label
           componentType: type,
+          componentId: componentId,  // Store for circuit conversion
           value,
-          rotation: 0,           // Bug 3: every new node starts at 0°
+          rotation: 0,
           onEditValue:   handleEditValue,
           onChangeDraft: handleChangeDraft,
           onSaveDraft:   handleSaveDraft,
@@ -396,7 +422,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
 
       setNodes((nds) => [...nds, newNode]);
     },
-    [handleEditValue, handleChangeDraft, handleSaveDraft, handleCancelDraft, setNodes]
+    [handleEditValue, handleChangeDraft, handleSaveDraft, handleCancelDraft, setNodes, nodes]
   );
 
   const onDragOver = useCallback((event) => {
