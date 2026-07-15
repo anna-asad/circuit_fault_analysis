@@ -64,32 +64,33 @@ const DEFAULT_VALUES = {
 
 const NODE_STYLES = {
   base: {
-    padding: '6px 10px',
-    borderRadius: '6px',
-    fontSize: '10px',
+    padding: '4px 8px',
+    borderRadius: '3px',
+    fontSize: '11px',
     fontWeight: '600',
-    border: '1.5px solid #d1d5db',
+    fontFamily: 'monospace',
+    border: '1.5px solid #555',
     whiteSpace: 'pre-line',
     textAlign: 'center',
-    minWidth: '70px',
-    minHeight: '50px',
-    background: '#ffffff',
-    color: '#374151',
+    minWidth: '80px',
+    minHeight: '52px',
+    background: '#f0f0e8',   // LTSpice yellowish off-white
+    color: '#1a1a1a',
   },
   junction: {
     padding: '0',
     borderRadius: '50%',
-    width: '8px',
-    height: '8px',
-    background: '#1f2937',
+    width: '10px',
+    height: '10px',
+    background: '#1a1a1a',
     border: 'none',
     color: 'transparent',
   },
   ground: {
-    background: '#f3f4f6',
-    borderColor: '#6b7280',
-    minWidth: '50px',
-    minHeight: '50px',
+    background: 'transparent',
+    border: 'none',
+    minWidth: '44px',
+    minHeight: '52px',
   },
 };
 
@@ -143,8 +144,9 @@ function formatNodeValue(type, value) {
 
 function getNodeStyle(type) {
   if (type === 'junction') return NODE_STYLES.junction;
-  if (type === 'ground')   return { ...NODE_STYLES.base, ...NODE_STYLES.ground };
-  if (type === 'dc_source') return { ...NODE_STYLES.base, minWidth: '80px' };
+  if (type === 'ground')   return NODE_STYLES.ground;
+  if (type === 'dc_source') return { ...NODE_STYLES.base, minWidth: '90px' };
+  if (type === 'current_source') return { ...NODE_STYLES.base, minWidth: '90px' };
   return NODE_STYLES.base;
 }
 
@@ -201,21 +203,28 @@ function ComponentNode({ id, data, mode }) {
       <div className="circuit-node circuit-node-component" style={data.style}>
         <NodeTerminals rotation={rotation} />
         <div className="circuit-node-content component-content">
-          <div className="component-visual-container" />
+          <div
+            className="component-visual-container"
+            style={{ transform: `rotate(${rotation}deg)`, transformOrigin: 'center center' }}
+          >
+            <div className="component-svg-fallback visible">
+              {COMPONENT_SVGS[data.componentType]}
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  const { isEditing, valueDraft, valueError, componentType, value } = data;
+  const { isEditing, valueDraft, valueError, componentType, value, label } = data;
 
   return (
     <div className="circuit-node circuit-node-component" style={data.style}>
       <NodeTerminals rotation={rotation} />
       <div className="circuit-node-content component-content">
-        {/* Bug 3: rotate the SVG around its own centre. The wrapper div is
-            the bounding box that ReactFlow measures; we rotate only the
-            visual content inside it so the node's hit-area doesn't shift. */}
+        {/* Component reference label (R1, C2, V1 …) — outside the rotating box */}
+        <div className="component-ref-label">{label}</div>
+        {/* SVG symbol rotates independently; node bounding box stays fixed */}
         <div
           className="component-visual-container"
           style={{
@@ -261,7 +270,7 @@ function JunctionNode({ data }) {
       <Handle type="source" position={Position.Right}  id="right"  className="circuit-handle" />
       <Handle type="source" position={Position.Top}    id="top"    className="circuit-handle" />
       <Handle type="source" position={Position.Bottom} id="bottom" className="circuit-handle" />
-      <div className="junction-dot">{data.label}</div>
+      <div className="junction-dot" />
     </div>
   );
 }
@@ -270,9 +279,20 @@ function JunctionNode({ data }) {
 function GroundNode({ data }) {
   return (
     <div className="circuit-node circuit-node-ground" style={data.style}>
-      {/* Ground has only ONE handle at the bottom - connects to any wire */}
+      {/* Single connection handle at the top of the ground symbol */}
       <Handle type="source" position={Position.Top} id="top" className="circuit-handle" />
-      <div className="ground-symbol">{data.label}</div>
+      <svg
+        className="ground-svg"
+        viewBox="0 0 40 36"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        {/* Vertical stem */}
+        <line x1="20" y1="0"  x2="20" y2="10" stroke="#1a1a1a" strokeWidth="2"/>
+        {/* Three horizontal bars — wide, medium, narrow */}
+        <line x1="4"  y1="10" x2="36" y2="10" stroke="#1a1a1a" strokeWidth="2.5"/>
+        <line x1="10" y1="18" x2="30" y2="18" stroke="#1a1a1a" strokeWidth="2.5"/>
+        <line x1="16" y1="26" x2="24" y2="26" stroke="#1a1a1a" strokeWidth="2.5"/>
+      </svg>
     </div>
   );
 }
@@ -351,11 +371,12 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
     (params) =>
       setEdges((eds) =>
         addEdge(
-          { 
-            ...params, 
-            type: 'straight', // Use straight lines like LTspice for clean circuits
-            animated: false, 
-            style: { stroke: '#1f2937', strokeWidth: 2 },
+          {
+            ...params,
+            type: 'smoothstep',          // orthogonal elbow routing, LTSpice-style
+            animated: false,
+            style: { stroke: '#1a1a1a', strokeWidth: 2 },
+            pathOptions: { borderRadius: 0 },  // sharp 90° elbows
           },
           eds
         )
@@ -365,184 +386,136 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
 
   // ── Handle ground connecting to edges (wires) ────────────────────────────
   const onConnectStart = useCallback((event, { nodeId, handleId }) => {
-    // Store the connection start info
-    console.log('🔗 Connection started from:', nodeId, handleId);
     window.connectionStart = { nodeId, handleId };
   }, []);
 
   const onConnectEnd = useCallback(
     (event) => {
-      console.log('🔗 Connection ended', { hasStart: !!window.connectionStart });
-      
       const instance = reactFlowRef.current;
       if (!instance || !window.connectionStart) return;
 
       const { nodeId: startNodeId } = window.connectionStart;
       const startNode = nodes.find(n => n.id === startNodeId);
-      
-      console.log('🔗 Start node:', startNode?.data?.componentType);
-      
-      // Only handle this for ground nodes
+
+      // Only handle this for ground nodes that were NOT connected to a handle
+      // (ReactFlow fires onConnect for handle-to-handle; onConnectEnd fires for
+      //  drops onto empty canvas / wires — we only want the latter.)
       if (startNode?.data?.componentType !== 'ground') {
         window.connectionStart = null;
         return;
       }
 
-      console.log('⏚ Ground connection detected!');
-
-      // Get the position where the user released the connection
       const { clientX, clientY } = event;
       const position = instance.screenToFlowPosition({ x: clientX, y: clientY });
-      
-      console.log('📍 Release position:', position);
 
-      // Check if we're near an edge (wire) - calculate distance to line segment
-      const threshold = 80;
+      // ── Compute accurate handle positions using ReactFlow's internal node
+      // dimensions (populated after first render) ───────────────────────────
+      const getHandlePos = (node, handleId) => {
+        // Use internals if available (ReactFlow ≥ 11 populates positionAbsolute + width/height)
+        const nx = (node.positionAbsolute?.x ?? node.position.x);
+        const ny = (node.positionAbsolute?.y ?? node.position.y);
+        const w  = node.width  ?? (node.data?.componentType === 'junction' ? 8 : 80);
+        const h  = node.height ?? (node.data?.componentType === 'ground'   ? 60 : 50);
+
+        switch (handleId) {
+          case 'left':   return { x: nx,         y: ny + h / 2 };
+          case 'right':  return { x: nx + w,      y: ny + h / 2 };
+          case 'top':    return { x: nx + w / 2,  y: ny         };
+          case 'bottom': return { x: nx + w / 2,  y: ny + h     };
+          default:       return { x: nx + w / 2,  y: ny + h / 2 };
+        }
+      };
+
+      // Find the nearest wire (edge) to the drop point
+      const threshold = 60;
       let nearestEdge = null;
       let minDistance = Infinity;
       let nearestPoint = null;
 
       edges.forEach(edge => {
-        const sourceNode = nodes.find(n => n.id === edge.source);
-        const targetNode = nodes.find(n => n.id === edge.target);
-        
-        if (!sourceNode || !targetNode) return;
+        const srcNode = nodes.find(n => n.id === edge.source);
+        const tgtNode = nodes.find(n => n.id === edge.target);
+        if (!srcNode || !tgtNode) return;
 
-        // Get actual node dimensions and handle positions
-        // Components are roughly 70-80px wide, 50px tall
-        // Handles are at left/right edges
-        const getHandlePosition = (node, handleId) => {
-          const baseX = node.position.x;
-          const baseY = node.position.y;
-          
-          // Estimate based on handle ID
-          if (handleId === 'left') return { x: baseX, y: baseY + 25 };
-          if (handleId === 'right') return { x: baseX + 70, y: baseY + 25 };
-          if (handleId === 'top') return { x: baseX + 35, y: baseY };
-          if (handleId === 'bottom') return { x: baseX + 35, y: baseY + 50 };
-          
-          // Default: center of node
-          return { x: baseX + 35, y: baseY + 25 };
-        };
+        const srcPos = getHandlePos(srcNode, edge.sourceHandle);
+        const tgtPos = getHandlePos(tgtNode, edge.targetHandle);
 
-        const sourcePos = getHandlePosition(sourceNode, edge.sourceHandle);
-        const targetPos = getHandlePosition(targetNode, edge.targetHandle);
-        
-        // Calculate closest point on line segment
-        const x1 = sourcePos.x;
-        const y1 = sourcePos.y;
-        const x2 = targetPos.x;
-        const y2 = targetPos.y;
-        
-        const A = position.x - x1;
-        const B = position.y - y1;
-        const C = x2 - x1;
-        const D = y2 - y1;
-        
-        const dot = A * C + B * D;
-        const lenSq = C * C + D * D;
-        let param = -1;
-        
-        if (lenSq !== 0) {
-          param = dot / lenSq;
-        }
-        
-        let xx, yy;
-        
-        if (param < 0) {
-          xx = x1;
-          yy = y1;
-        } else if (param > 1) {
-          xx = x2;
-          yy = y2;
-        } else {
-          xx = x1 + param * C;
-          yy = y1 + param * D;
-        }
-        
-        const dx = position.x - xx;
-        const dy = position.y - yy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        console.log(`  Edge ${edge.source.slice(-6)}->${edge.target.slice(-6)}: distance = ${dist.toFixed(1)}px`);
+        // Closest point on segment
+        const dx = tgtPos.x - srcPos.x;
+        const dy = tgtPos.y - srcPos.y;
+        const lenSq = dx * dx + dy * dy;
+        let t = lenSq > 0 ? ((position.x - srcPos.x) * dx + (position.y - srcPos.y) * dy) / lenSq : 0;
+        t = Math.max(0, Math.min(1, t));
+        const cx = srcPos.x + t * dx;
+        const cy = srcPos.y + t * dy;
+        const dist = Math.hypot(position.x - cx, position.y - cy);
 
         if (dist < threshold && dist < minDistance) {
           minDistance = dist;
           nearestEdge = edge;
-          nearestPoint = { x: xx, y: yy };
+          nearestPoint = { x: cx, y: cy };
         }
       });
 
-      console.log('🎯 Nearest edge:', nearestEdge?.id, 'distance:', minDistance.toFixed(1));
-
-      // If we found a nearby edge, insert a junction ON the line to preserve wire shape
       if (nearestEdge) {
-        console.log('✅ Creating junction on edge:', nearestEdge.id);
-        
-        // Place junction at the nearest point ON the wire line (not at release position)
-        // This ensures the wire path stays straight through the junction
-        const junctionId = `junction_auto_${Date.now()}`;
-        const junctionNode = {
-          id: junctionId,
-          type: 'junctionNode',
-          position: {
-            x: nearestPoint.x - 4, // Use calculated nearest point on the line
-            y: nearestPoint.y - 4,
-          },
-          data: {
-            label: '●',
-            componentType: 'junction',
-            componentId: junctionId,
-          },
-          style: NODE_STYLES.junction,
-        };
+        // Snap junction to grid (20px)
+        const snap = 20;
+        const snappedX = Math.round(nearestPoint.x / snap) * snap;
+        const snappedY = Math.round(nearestPoint.y / snap) * snap;
 
-        // Batch both updates together
-        setNodes((nds) => [...nds, junctionNode]);
-        
+        const junctionId = `junction_auto_${Date.now()}`;
+        const WIRE_STYLE = { stroke: '#1a1a1a', strokeWidth: 2 };
+
+        setNodes((nds) => [
+          ...nds,
+          {
+            id: junctionId,
+            type: 'junctionNode',
+            position: { x: snappedX - 4, y: snappedY - 4 },
+            data: { label: '●', componentType: 'junction', componentId: junctionId },
+            style: NODE_STYLES.junction,
+          },
+        ]);
+
         setEdges((eds) => {
-          // Remove the original edge
           const filtered = eds.filter(e => e.id !== nearestEdge.id);
-          
-          // Add three new edges with EXACT same handles as original
           return [
             ...filtered,
-            // Split 1: preserve exact path source -> junction
+            // wire: original source → junction  (keep original sourceHandle)
             {
-              id: `${nearestEdge.source}-${junctionId}`,
+              id: `e_${nearestEdge.source}_${junctionId}`,
               source: nearestEdge.source,
-              sourceHandle: nearestEdge.sourceHandle, // Same as original
+              sourceHandle: nearestEdge.sourceHandle,
               target: junctionId,
-              targetHandle: nearestEdge.sourceHandle, // Match original direction
-              type: 'straight',
-              style: nearestEdge.style || { stroke: '#1f2937', strokeWidth: 2 },
+              targetHandle: 'left',   // junctions accept any handle; use left
+              type: 'smoothstep',
+              style: WIRE_STYLE,
+              pathOptions: { borderRadius: 0 },
             },
-            // Split 2: preserve exact path junction -> target  
+            // wire: junction → original target  (keep original targetHandle)
             {
-              id: `${junctionId}-${nearestEdge.target}`,
+              id: `e_${junctionId}_${nearestEdge.target}`,
               source: junctionId,
-              sourceHandle: nearestEdge.targetHandle, // Match original direction
+              sourceHandle: 'right',  // symmetrical exit
               target: nearestEdge.target,
-              targetHandle: nearestEdge.targetHandle, // Same as original
-              type: 'straight',
-              style: nearestEdge.style || { stroke: '#1f2937', strokeWidth: 2 },
+              targetHandle: nearestEdge.targetHandle,
+              type: 'smoothstep',
+              style: WIRE_STYLE,
+              pathOptions: { borderRadius: 0 },
             },
-            // Ground connection
+            // wire: ground → junction
             {
-              id: `${startNodeId}-${junctionId}`,
+              id: `e_${startNodeId}_${junctionId}`,
               source: startNodeId,
               sourceHandle: 'top',
               target: junctionId,
+              targetHandle: 'bottom',
               type: 'smoothstep',
-              style: { stroke: '#1f2937', strokeWidth: 2 },
-              pathOptions: { borderRadius: 8 },
+              style: WIRE_STYLE,
+              pathOptions: { borderRadius: 0 },
             },
           ];
         });
-        
-        console.log('✨ Junction created at', nearestPoint);
-      } else {
-        console.log('❌ No edge found near release point');
       }
 
       window.connectionStart = null;
@@ -619,88 +592,43 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
-  // Helper function to rotate handle IDs 90° clockwise
-  const rotateHandle = useCallback((handle) => {
-    const rotationMap = {
-      'left': 'top',
-      'top': 'right',
-      'right': 'bottom',
-      'bottom': 'left',
-    };
-    return rotationMap[handle] || handle;
-  }, []);
-
   // ── Keyboard handler ──────────────────────────────────────────────────────
   const onKeyDown = useCallback(
     (event) => {
-      // ── Bug 2 fix: ignore all key handling when the user is typing in an
-      // input or textarea (e.g. the inline value editor).  This prevents
-      // Backspace/Delete from deleting nodes while editing a value.
       const tag = document.activeElement?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
-      // ── Delete / Backspace: remove selected nodes and edges ───────────────
+      // ── Delete / Backspace ───────────────────────────────────────────────
       if (event.key === 'Delete' || event.key === 'Backspace') {
         setNodes((nds) => nds.filter((n) => !n.selected));
         setEdges((eds) => eds.filter((e) => !e.selected));
         return;
       }
 
-      // ── Ctrl+R: rotate selected component 90° clockwise ──────────────────
+      // ── Ctrl+R: rotate selected components 90° clockwise ────────────────
       if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
         event.preventDefault();
 
-        // Track which nodes are being rotated
-        const rotatedNodeIds = new Set();
-        
+        // Handle IDs on ComponentNode are ALWAYS "left" and "right" — they never
+        // change. Only the Handle's `position` prop changes (via ROTATION_TO_POSITIONS)
+        // so that the handle physically moves to a different edge of the node box.
+        // Edges reference handles by ID, so we must NOT remap IDs here.
+        // Just update the rotation value in node data; NodeTerminals re-renders
+        // the handles at the correct position automatically.
         setNodes((nds) =>
           nds.map((n) => {
             if (!n.selected) return n;
             const ctype = n.data?.componentType;
             if (!ctype || ctype === 'junction' || ctype === 'ground') return n;
-
-            rotatedNodeIds.add(n.id);
-            const currentRotation = n.data?.rotation ?? 0;
-            const nextRotation = (currentRotation + 90) % 360;
-
-            return {
-              ...n,
-              data: { ...n.data, rotation: nextRotation },
-            };
+            const nextRot = ((n.data?.rotation ?? 0) + 90) % 360;
+            return { ...n, data: { ...n.data, rotation: nextRot } };
           })
         );
-
-        // Remap edges connected to rotated components to use the correct physical handles
-        setTimeout(() => {
-          setEdges((eds) =>
-            eds.map((edge) => {
-              let newEdge = { ...edge };
-              
-              // Check if source is rotated
-              const sourceNode = nodes.find((n) => n.id === edge.source);
-              if (sourceNode && rotatedNodeIds.has(edge.source)) {
-                if (edge.sourceHandle) {
-                  newEdge.sourceHandle = rotateHandle(edge.sourceHandle);
-                }
-              }
-              
-              // Check if target is rotated
-              const targetNode = nodes.find((n) => n.id === edge.target);
-              if (targetNode && rotatedNodeIds.has(edge.target)) {
-                if (edge.targetHandle) {
-                  newEdge.targetHandle = rotateHandle(edge.targetHandle);
-                }
-              }
-              
-              return newEdge;
-            })
-          );
-        }, 10);
 
         return;
       }
     },
-    [setNodes, setEdges, nodes, rotateHandle]
+    [setNodes, setEdges]
   );
 
   // ── nodeTypes (stable reference — recreated only when mode changes) ───────
@@ -755,22 +683,30 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
         nodeTypes={nodeTypes}
         connectionMode="loose"
         snapToGrid={true}
-        snapGrid={[20, 20]}
+        snapGrid={[10, 10]}
         fitView
         deleteKeyCode={null}
         nodesDraggable={!isReadOnly}
         nodesConnectable={!isReadOnly}
         elementsSelectable={!isReadOnly}
+        defaultEdgeOptions={{
+          type: 'smoothstep',
+          style: { stroke: '#1a1a1a', strokeWidth: 2 },
+          pathOptions: { borderRadius: 0 },
+        }}
       >
         <Controls />
         <MiniMap
           nodeColor={(node) => {
-            if (node.data?.componentType === 'dc_source') return '#3b82f6';
-            if (node.data?.componentType === 'ground')    return '#6b7280';
-            return '#10b981';
+            if (node.data?.componentType === 'dc_source') return '#2563eb';
+            if (node.data?.componentType === 'current_source') return '#7c3aed';
+            if (node.data?.componentType === 'ground') return '#4b5563';
+            if (node.data?.componentType === 'junction') return '#1a1a1a';
+            return '#059669';
           }}
+          maskColor="rgba(240,240,232,0.7)"
         />
-        <Background variant="dots" gap={20} size={1.5} color="#d1d5db" />
+        <Background variant="lines" gap={20} size={1} color="#d0cfc6" />
       </ReactFlow>
     </div>
   );
