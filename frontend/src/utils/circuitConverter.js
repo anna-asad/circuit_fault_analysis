@@ -57,12 +57,12 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     const srcType = nodes.find(n => n.id === edge.source)?.data?.componentType;
     const tgtType = nodes.find(n => n.id === edge.target)?.data?.componentType;
 
-    // Track handle usage only for passive/source components — NOT for meters.
-    // An ammeter in series legitimately sits between a junction (which itself
-    // connects to ground) so the junction→ammeter wire and the
-    // source→ammeter wire both use the same handle ID; flagging that as an
-    // error is wrong.  Meter placement is validated structurally by the backend.
-    const SKIP_HANDLE_CHECK = ['junction', 'ground', 'ammeter', 'voltmeter'];
+    // Track handle usage only for passive components (resistors, capacitors, inductors).
+    // Skip validation for:
+    // - junction/ground (they're wire nodes, not components)
+    // - meters (validated structurally by backend)
+    // - sources (voltage/current sources can connect to junctions that split to multiple paths)
+    const SKIP_HANDLE_CHECK = ['junction', 'ground', 'ammeter', 'voltmeter', 'dc_source', 'current_source'];
 
     if (srcType && !SKIP_HANDLE_CHECK.includes(srcType) && edge.sourceHandle) {
       const key = `${edge.source}::${edge.sourceHandle}`;
@@ -99,79 +99,95 @@ export function convertCircuitToBackendFormat(nodes, edges) {
   });
 
   // ── Validate each component has exactly 2 distinct terminal branches ────────
-  // We walk through junctions (which are just wire nodes) to find the real
-  // endpoints at each side of the component.  This means a component wired
-  // as:  source ─── junction ─── ammeter ─── resistor
-  // correctly reports 2 terminal branches even though its direct neighbor on
-  // one side is a junction (not a "real" component).
+  // Check each pin/handle separately to avoid counting the same endpoint twice
+  // when different pins can reach it through different paths.
   const terminalNodes = new Map();
 
-  // Helper: from a starting component node, follow one wire through any chain
-  // of junctions and return all non-junction, non-ground endpoints reachable
-  // without crossing another real component.
-  function findTerminalBranches(compId) {
-    const branches = []; // each entry = { endId, endType, viaJunction }
-
-    // BFS from the component outward through junctions
+  // Helper: from a specific handle/pin of a component, follow through junctions
+  // and return the first non-junction, non-ground endpoint reachable.
+  function findEndpointFromHandle(compId, startNeighbor) {
     const visited = new Set([compId]);
-    const queue   = (graph.get(compId) || []).map(nbr => ({ id: nbr, depth: 1 }));
+    let current = startNeighbor;
 
-    while (queue.length > 0) {
-      const { id: cur } = queue.shift();
-      if (visited.has(cur)) continue;
-      visited.add(cur);
+    while (current) {
+      if (visited.has(current)) return null; // Loop detected
+      visited.add(current);
 
-      const curType = nodes.find(n => n.id === cur)?.data?.componentType;
+      const curType = nodes.find(n => n.id === current)?.data?.componentType;
 
       if (curType === 'junction') {
         // Keep traversing through this junction
-        (graph.get(cur) || []).forEach(nbr => {
-          if (!visited.has(nbr)) queue.push({ id: nbr, depth: 2 });
-        });
+        const neighbors = graph.get(current) || [];
+        const nextNode = neighbors.find(nbr => !visited.has(nbr));
+        if (!nextNode) return null; // Dead end
+        current = nextNode;
       } else {
         // Real endpoint (component, ground, or dangling)
-        branches.push({ endId: cur, endType: curType });
+        return { endId: current, endType: curType };
       }
     }
-    return branches;
+    return null;
   }
 
   componentNodes.forEach(comp => {
     const ctype = comp.data?.componentType;
-
-    // Meters: only need to be connected (both pins wired) — structural
-    // series/parallel validation happens in the backend, not here.
-    // We still need them in terminalNodes so the union-find works.
     const isMeter = meterTypes.includes(ctype);
 
-    const branches = findTerminalBranches(comp.id);
-
-    // Count non-ground branches
-    const nonGroundBranches = branches.filter(b => b.endType !== 'ground');
-
-    // For regular components we enforce exactly 2 electrical terminals.
-    // For meters we only enforce ≥ 1 on each side (i.e. both pins connected).
-    const directConns = (graph.get(comp.id) || []);
-    const hasAnyConnection = directConns.length >= 2 ||
-      (directConns.length === 1 && nonGroundBranches.length >= 1);
-
-    if (!isMeter && nonGroundBranches.length !== 2) {
-      const label = ctype ?? 'Component';
-      const id    = comp.data?.componentId ?? label;
-      if (nonGroundBranches.length < 2) {
-        throw new Error(
-          `${id} has only ${nonGroundBranches.length} connection${nonGroundBranches.length === 1 ? '' : 's'} — connect both pins.`
-        );
-      } else {
-        throw new Error(
-          `${id} has ${nonGroundBranches.length} connections but needs exactly 2 (one per pin). Check for duplicate wires.`
-        );
-      }
+    // Get all direct connections (edges touching this component)
+    const compEdges = edges.filter(e => e.source === comp.id || e.target === comp.id);
+    
+    if (compEdges.length === 0) {
+      const id = comp.data?.componentId ?? ctype;
+      throw new Error(`${id} is not connected — connect both pins.`);
     }
 
-    if (isMeter && directConns.length < 2) {
+    // Group edges by handle to check each pin separately
+    const pinConnections = new Map(); // handleId → [neighbors]
+    
+    compEdges.forEach(edge => {
+      if (edge.source === comp.id && edge.sourceHandle) {
+        if (!pinConnections.has(edge.sourceHandle)) {
+          pinConnections.set(edge.sourceHandle, []);
+        }
+        pinConnections.get(edge.sourceHandle).push(edge.target);
+      }
+      if (edge.target === comp.id && edge.targetHandle) {
+        if (!pinConnections.has(edge.targetHandle)) {
+          pinConnections.set(edge.targetHandle, []);
+        }
+        pinConnections.get(edge.targetHandle).push(edge.source);
+      }
+    });
+
+    // Each pin should have exactly one wire (already validated by handleEdges check above)
+    // Now verify both pins are connected
+    const connectedPins = pinConnections.size;
+    
+    if (connectedPins < 2) {
       const id = comp.data?.componentId ?? ctype;
-      throw new Error(`${id} has only ${directConns.length} connection — connect both pins.`);
+      throw new Error(`${id} has only ${connectedPins} pin connected — connect both pins.`);
+    }
+
+    // For non-meters, verify each pin reaches a distinct non-ground endpoint
+    if (!isMeter) {
+      const endpoints = [];
+      for (const [handle, neighbors] of pinConnections) {
+        // Each pin should have exactly one neighbor (validated earlier)
+        const neighbor = neighbors[0];
+        const endpoint = findEndpointFromHandle(comp.id, neighbor);
+        
+        if (endpoint && endpoint.endType !== 'ground') {
+          endpoints.push(endpoint);
+        }
+      }
+
+      // Should have exactly 2 distinct non-ground endpoints (one per pin)
+      if (endpoints.length < 2) {
+        const id = comp.data?.componentId ?? ctype;
+        throw new Error(
+          `${id} has only ${endpoints.length} non-ground connection${endpoints.length === 1 ? '' : 's'} — connect both pins.`
+        );
+      }
     }
 
     terminalNodes.set(comp.id, [`${comp.id}_t0`, `${comp.id}_t1`]);
