@@ -86,30 +86,12 @@ class CircuitModel(BaseModel):
     nodes: List[str] = Field(..., description="List of all node IDs in the circuit")
     components: List[ComponentModel] = Field(..., description="List of all components")
     ground: str = Field(default="0", description="Ground node reference")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "nodes": ["n1", "n2", "0"],
-                "components": [
-                    {
-                        "id": "V1",
-                        "type": "dc_source",
-                        "value": 5.0,
-                        "nodes": ["n1", "0"],
-                        "position": {"x": 100, "y": 200}
-                    },
-                    {
-                        "id": "R1",
-                        "type": "resistor",
-                        "value": 1000,
-                        "nodes": ["n1", "n2"],
-                        "position": {"x": 300, "y": 200}
-                    }
-                ],
-                "ground": "0"
-            }
-        }
+    # Meter metadata forwarded by the frontend converter so we can echo it back
+    # in simulation_data for the ResultsPanel to resolve readings.
+    meters: List[Dict[str, Any]] = Field(
+        default=[],
+        description="Ammeter/voltmeter metadata: [{id, type, spiceName, nodes}]"
+    )
 
 
 class SimulationResponse(BaseModel):
@@ -309,6 +291,7 @@ async def simulate_circuit(circuit: CircuitModel):
                 "voltages":   voltages,
                 "currents":   currents,
                 "components": circuit_dict.get("components", []),
+                "meters":     circuit_dict.get("meters", []),
             },
             error=None
         )

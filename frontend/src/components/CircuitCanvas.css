@@ -313,3 +313,14 @@
   color: #cc0000;
   font-family: monospace;
 }
+
+/* ── Meter hint label (replaces value button for ammeter/voltmeter) ───────── */
+.meter-placeholder {
+  font-size: 9px;
+  font-family: monospace;
+  font-style: italic;
+  opacity: 0.65;
+  pointer-events: none;
+  user-select: none;
+  line-height: 1;
+}

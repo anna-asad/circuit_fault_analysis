@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import './ResultsPanel.css';
 
 // ── Value formatting ──────────────────────────────────────────────────────────
@@ -18,71 +19,78 @@ function fmtCurrent(a) {
   return `${a.toFixed(4)} A`;
 }
 
-// ── ML card styling by fault type ────────────────────────────────────────────
+// ── ML card helpers ───────────────────────────────────────────────────────────
 function mlCardClass(faultType) {
   if (!faultType || faultType === 'Normal') return 'ml-card ml-card-normal';
-  if (faultType === 'model_unavailable' || faultType === 'prediction_error' || faultType === 'schema_mismatch')
+  if (['model_unavailable', 'prediction_error', 'schema_mismatch'].includes(faultType))
     return 'ml-card ml-card-unknown';
   return 'ml-card ml-card-fault';
 }
-
 function confidenceClass(conf) {
   if (conf >= 0.8) return 'conf-badge conf-high';
   if (conf >= 0.5) return 'conf-badge conf-mid';
   return 'conf-badge conf-low';
 }
 
-// ── Build human-readable node descriptions ───────────────────────────────────
-// For each ngspice node name (n1, n2, 0), find which component pins connect to it.
+// ── Node description builder ──────────────────────────────────────────────────
 function buildNodeDescriptions(voltages, simulationData) {
   const components = simulationData?.components ?? [];
   const desc = {};
-
   Object.keys(voltages).forEach(node => {
-    if (node === '0') {
-      desc[node] = 'GND';
-      return;
-    }
+    if (node === '0') { desc[node] = 'GND'; return; }
     const pins = [];
     components.forEach(comp => {
       if (!comp.nodes) return;
       comp.nodes.forEach((n, idx) => {
         if (n !== node) return;
-        const compId = comp.id ?? '?';
-        const compType = comp.type ?? '';
-        // Pin label: dc_source uses +/−, others use A/B
-        let pinLabel;
-        if (compType === 'dc_source') {
-          pinLabel = idx === 0 ? '+' : '−';
-        } else {
-          pinLabel = idx === 0 ? 'A' : 'B';
-        }
-        pins.push(`${compId}(${pinLabel})`);
+        const pinLabel = comp.type === 'dc_source'
+          ? (idx === 0 ? '+' : '−')
+          : (idx === 0 ? 'A' : 'B');
+        pins.push(`${comp.id ?? '?'}(${pinLabel})`);
       });
     });
     desc[node] = pins.length > 0 ? pins.join(' · ') : node;
   });
-
   return desc;
 }
 
-// ── Build human-readable current source labels ────────────────────────────────
-// ngspice reports I(Vdcsource...) — map back to V1, V2 etc.
+// ── Current-source label resolver ─────────────────────────────────────────────
 function buildCurrentLabel(rawKey, simulationData) {
-  const components = simulationData?.components ?? [];
-  // rawKey from ngspice is the SPICE name (e.g. "VDCSOURCE1784..." or "V1")
   const upper = rawKey.toUpperCase();
-  // Try to find the matching component by matching its SPICE name
-  const match = components.find(c => {
-    const spiceName = (c.type === 'dc_source'
+  const match = (simulationData?.components ?? []).find(c => {
+    const sname = (c.type === 'dc_source'
       ? (c.id.toUpperCase().startsWith('V') ? c.id : `V${c.id}`)
       : c.id
     ).toUpperCase();
-    return spiceName === upper || c.id.toUpperCase() === upper;
+    return sname === upper || c.id.toUpperCase() === upper;
   });
-  if (match) return match.id;
-  return rawKey;
+  return match ? match.id : rawKey;
 }
+
+// ── Meter reading resolver ────────────────────────────────────────────────────
+function resolveMeterReadings(meters, voltages, currents) {
+  if (!meters || meters.length === 0) return [];
+  return meters.map(meter => {
+    const { id, type, spiceName, nodes } = meter;
+    if (type === 'ammeter') {
+      const key   = spiceName?.toUpperCase();
+      const value = currents[key] ?? currents[key?.replace('VSENSE_', '')] ?? null;
+      return { id, type, value, formatted: value !== null ? fmtCurrent(value) : '—', ok: value !== null };
+    }
+    if (type === 'voltmeter') {
+      const vplus  = voltages[nodes?.[0]];
+      const vminus = voltages[nodes?.[1]];
+      if (vplus !== undefined && vminus !== undefined) {
+        const value = vplus - vminus;
+        return { id, type, value, formatted: fmtVoltage(value), ok: true };
+      }
+      return { id, type, value: null, formatted: '—', ok: false };
+    }
+    return { id, type, value: null, formatted: '—', ok: false };
+  });
+}
+
+// ── ML labels ─────────────────────────────────────────────────────────────────
 const LABEL_DISPLAY = {
   drift:                'Value Drift',
   partial_short:        'Partial Short',
@@ -91,13 +99,104 @@ const LABEL_DISPLAY = {
   Normal:               'Normal',
   Multiple_Faults:      'Multiple Faults',
 };
-
 function displayLabel(raw) {
   return LABEL_DISPLAY[raw] ?? raw.replace(/_/g, ' ');
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── SimData: the full voltage/current/meter tables ────────────────────────────
+function SimData({ voltages, currents, meters, simulationData, ammeterSpiceKeys }) {
+  const nodeDesc    = buildNodeDescriptions(voltages, simulationData);
+  const currentDesc = src => buildCurrentLabel(src, simulationData);
+  const meterReadings = resolveMeterReadings(meters, voltages, currents);
+
+  return (
+    <div className="results-content">
+      {/* Meter measurements */}
+      {meterReadings.length > 0 && (
+        <section className="result-section">
+          <h4 className="section-title">📏 Measurements</h4>
+          <div className="data-grid">
+            {meterReadings.map(m => (
+              <div key={m.id} className={`data-item meter-item meter-item-${m.type}`}>
+                <div className="data-label-wrap">
+                  <span className="data-label">{m.type === 'ammeter' ? 'Ⓐ' : 'Ⓥ'} {m.id}</span>
+                  <span className="data-subtext">
+                    {m.type === 'ammeter' ? 'Current (series)' : 'Voltage (parallel)'}
+                  </span>
+                </div>
+                <span className={`data-value meter-value-${m.type}${!m.ok ? ' data-value-zero' : ''}`}>
+                  {m.formatted}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Node voltages */}
+      <section className="result-section">
+        <h4 className="section-title">⚡ Node Voltages</h4>
+        {Object.keys(voltages).length > 0 ? (
+          <div className="data-grid">
+            {Object.entries(voltages)
+              .sort(([a], [b]) => {
+                if (a === '0') return -1;
+                if (b === '0') return 1;
+                return (parseInt(a.replace(/\D/g, '')) || 0) - (parseInt(b.replace(/\D/g, '')) || 0);
+              })
+              .map(([node, v]) => (
+                <div key={node} className="data-item">
+                  <div className="data-label-wrap">
+                    <span className="data-label" title={`Node ${node}`}>{nodeDesc[node] ?? node}</span>
+                    <span className="data-subtext">V({node})</span>
+                  </div>
+                  <span className={`data-value${v === 0 ? ' data-value-zero' : ''}`}>{fmtVoltage(v)}</span>
+                </div>
+              ))}
+          </div>
+        ) : (
+          <div className="empty-data-state">
+            <p>No node voltage data available</p>
+            <small>Check that ngspice completed successfully</small>
+          </div>
+        )}
+      </section>
+
+      {/* Branch currents */}
+      <section className="result-section">
+        <h4 className="section-title">🔌 Branch Currents</h4>
+        {(() => {
+          const visible = Object.entries(currents).filter(
+            ([src]) => !ammeterSpiceKeys.has(src.toUpperCase())
+          );
+          return visible.length > 0 ? (
+            <div className="data-grid">
+              {visible.map(([src, a]) => (
+                <div key={src} className="data-item">
+                  <div className="data-label-wrap">
+                    <span className="data-label" title={`Current through ${src}`}>{currentDesc(src)}</span>
+                    <span className="data-subtext">I({src})</span>
+                  </div>
+                  <span className="data-value">{fmtCurrent(a)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-data-state">
+              <p>No current data available</p>
+              <small>Check that ngspice completed successfully</small>
+            </div>
+          );
+        })()}
+      </section>
+    </div>
+  );
+}
+
+// ── ResultsPanel component ────────────────────────────────────────────────────
 function ResultsPanel({ results }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
   if (!results) {
     return (
       <aside className="results-panel">
@@ -117,147 +216,35 @@ function ResultsPanel({ results }) {
   const { success, simulation_data, structural_faults, pattern_faults, error } = results;
   const voltages = simulation_data?.voltages ?? {};
   const currents = simulation_data?.currents ?? {};
-  const isNormalPrediction = String(pattern_faults?.predicted_fault ?? '').toLowerCase() === 'normal';
+  const meters   = simulation_data?.meters   ?? [];
 
-  // Debug logging
-  console.log('📊 ResultsPanel data:', {
-    success,
-    voltages,
-    currents,
-    simulation_data,
-  });
+  const hasFaults      = structural_faults && structural_faults.length > 0;
+  const isNormalML     = String(pattern_faults?.predicted_fault ?? '').toLowerCase() === 'normal';
+  const mlAvailable    = !!pattern_faults && !['model_unavailable', 'no_simulation_data'].includes(pattern_faults.fault_type);
+  // "All clear" = simulation succeeded, no structural faults, ML says Normal
+  const isAllClear     = success && !hasFaults && isNormalML && mlAvailable;
 
-  // Human-readable descriptions for each node and current source
-  const nodeDesc    = buildNodeDescriptions(voltages, simulation_data);
-  const currentDesc = (src) => buildCurrentLabel(src, simulation_data);
+  const ammeterSpiceKeys = new Set(
+    meters
+      .filter(m => m.type === 'ammeter')
+      .flatMap(m => [
+        m.spiceName?.toUpperCase(),
+        m.spiceName?.toUpperCase().replace('VSENSE_', ''),
+      ])
+      .filter(Boolean)
+  );
 
-  return (
-    <aside className="results-panel">
-      <h3>Simulation Results</h3>
-
-      {success ? (
-        <div className="results-content">
-
-          {/* Voltages - Always show section, even if empty */}
-          <section className="result-section">
-            <h4 className="section-title">⚡ Node Voltages</h4>
-            {Object.keys(voltages).length > 0 ? (
-              <div className="data-grid">
-                {Object.entries(voltages)
-                  .sort(([a], [b]) => {
-                    // Sort: 0 (ground) first, then n1, n2, n3... numerically
-                    if (a === '0') return -1;
-                    if (b === '0') return 1;
-                    const numA = parseInt(a.replace(/\D/g, '')) || 0;
-                    const numB = parseInt(b.replace(/\D/g, '')) || 0;
-                    return numA - numB;
-                  })
-                  .map(([node, v]) => (
-                    <div key={node} className="data-item">
-                      <div className="data-label-wrap">
-                        <span className="data-label" title={`Node ${node}`}>
-                          {nodeDesc[node] ?? node}
-                        </span>
-                        <span className="data-subtext">V({node})</span>
-                      </div>
-                      <span className={`data-value${v === 0 ? ' data-value-zero' : ''}`}>
-                        {fmtVoltage(v)}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            ) : (
-              <div className="empty-data-state">
-                <p>No node voltage data available</p>
-                <small>Check that ngspice simulation completed successfully</small>
-              </div>
-            )}
-          </section>
-
-          {/* Currents - Always show section, even if empty */}
-          <section className="result-section">
-            <h4 className="section-title">🔌 Branch Currents</h4>
-            {Object.keys(currents).length > 0 ? (
-              <div className="data-grid">
-                {Object.entries(currents).map(([src, a]) => (
-                  <div key={src} className="data-item">
-                    <div className="data-label-wrap">
-                      <span className="data-label" title={`Current through ${src}`}>
-                        {currentDesc(src)}
-                      </span>
-                      <span className="data-subtext">I({src})</span>
-                    </div>
-                    <span className="data-value">{fmtCurrent(a)}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="empty-data-state">
-                <p>No current data available</p>
-                <small>Check that ngspice simulation completed successfully</small>
-              </div>
-            )}
-          </section>
-
-          {/* Structural faults */}
-          {structural_faults && structural_faults.length > 0 && (
-            <section className="result-section">
-              <h4 className="section-title">Structural Faults</h4>
-              <ul className="fault-list">
-                {structural_faults.map((f, i) => (
-                  <li key={i} className="fault-item fault-warn">{f}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {/* ML Classification */}
-          {pattern_faults && (
-            <section className="result-section">
-              <h4 className="section-title">ML Fault Classification</h4>
-              <div className={mlCardClass(pattern_faults.fault_type)}>
-                <div className="ml-prediction-row">
-                  <strong className="ml-predicted">
-                    {displayLabel(pattern_faults.predicted_fault)}
-                  </strong>
-                  <span className={confidenceClass(pattern_faults.confidence)}>
-                    {(pattern_faults.confidence * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <p className="ml-description">{pattern_faults.description}</p>
-
-                {/* Per-label probabilities from real model */}
-                {!isNormalPrediction && pattern_faults.all_probabilities &&
-                  Object.keys(pattern_faults.all_probabilities).length > 0 && (
-                  <div className="ml-probs">
-                    {Object.entries(pattern_faults.all_probabilities)
-                      .sort((a, b) => b[1] - a[1])
-                      .map(([label, prob]) => (
-                        <div key={label} className="ml-prob-row">
-                          <span className="ml-prob-label">{displayLabel(label)}</span>
-                          <div className="ml-prob-bar-wrap">
-                            <div
-                              className={`ml-prob-bar${prob >= 0.5 ? ' ml-prob-bar-fired' : ''}`}
-                              style={{ width: `${Math.round(prob * 100)}%` }}
-                            />
-                          </div>
-                          <span className="ml-prob-pct">{(prob * 100).toFixed(0)}%</span>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
-        </div>
-
-      ) : (
+  // ── Failed simulation ─────────────────────────────────────────────────────
+  if (!success) {
+    return (
+      <aside className="results-panel">
+        <h3>Simulation Results</h3>
         <div className="results-content">
           <div className="sim-failed-banner">
             <strong>Simulation failed</strong>
             {error && <p className="sim-failed-detail">{error}</p>}
           </div>
-          {structural_faults && structural_faults.length > 0 && (
+          {hasFaults && (
             <section className="result-section">
               <h4 className="section-title">Issues Detected</h4>
               <ul className="fault-list">
@@ -268,7 +255,216 @@ function ResultsPanel({ results }) {
             </section>
           )}
         </div>
-      )}
+      </aside>
+    );
+  }
+
+  // ── All-clear: compact summary + collapsible details ─────────────────────
+  if (isAllClear) {
+    return (
+      <aside className="results-panel">
+        <h3>Simulation Results</h3>
+        <div className="results-content">
+
+          {/* Meter readings still shown prominently even in all-clear mode */}
+          {meters.length > 0 && (
+            <section className="result-section">
+              <h4 className="section-title">📏 Measurements</h4>
+              <div className="data-grid">
+                {resolveMeterReadings(meters, voltages, currents).map(m => (
+                  <div key={m.id} className={`data-item meter-item meter-item-${m.type}`}>
+                    <div className="data-label-wrap">
+                      <span className="data-label">{m.type === 'ammeter' ? 'Ⓐ' : 'Ⓥ'} {m.id}</span>
+                      <span className="data-subtext">
+                        {m.type === 'ammeter' ? 'Current (series)' : 'Voltage (parallel)'}
+                      </span>
+                    </div>
+                    <span className={`data-value meter-value-${m.type}`}>
+                      {resolveMeterReadings(meters, voltages, currents).find(r => r.id === m.id)?.formatted ?? '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* All-clear banner */}
+          <div className="all-clear-banner">
+            <span className="all-clear-icon">✓</span>
+            <div className="all-clear-text">
+              <strong>Everything checks out</strong>
+              <p>No structural faults · Circuit operating normally</p>
+            </div>
+          </div>
+
+          {/* Collapsible simulation data */}
+          <button
+            type="button"
+            className="details-toggle"
+            onClick={() => setDetailsOpen(v => !v)}
+            aria-expanded={detailsOpen}
+          >
+            {detailsOpen ? '▲ Hide details' : '▼ Show simulation data'}
+          </button>
+
+          {detailsOpen && (
+            <SimData
+              voltages={voltages}
+              currents={currents}
+              meters={meters}
+              simulationData={simulation_data}
+              ammeterSpiceKeys={ammeterSpiceKeys}
+            />
+          )}
+        </div>
+      </aside>
+    );
+  }
+
+  // ── Normal expanded view (faults present or ML non-normal) ───────────────
+  return (
+    <aside className="results-panel">
+      <h3>Simulation Results</h3>
+      <div className="results-content">
+
+        {/* Meter measurements */}
+        {meters.length > 0 && (() => {
+          const readings = resolveMeterReadings(meters, voltages, currents);
+          return (
+            <section className="result-section">
+              <h4 className="section-title">📏 Measurements</h4>
+              <div className="data-grid">
+                {readings.map(m => (
+                  <div key={m.id} className={`data-item meter-item meter-item-${m.type}`}>
+                    <div className="data-label-wrap">
+                      <span className="data-label">{m.type === 'ammeter' ? 'Ⓐ' : 'Ⓥ'} {m.id}</span>
+                      <span className="data-subtext">
+                        {m.type === 'ammeter' ? 'Current (series)' : 'Voltage (parallel)'}
+                      </span>
+                    </div>
+                    <span className={`data-value meter-value-${m.type}${!m.ok ? ' data-value-zero' : ''}`}>
+                      {m.formatted}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          );
+        })()}
+
+        {/* Node voltages */}
+        <section className="result-section">
+          <h4 className="section-title">⚡ Node Voltages</h4>
+          {Object.keys(voltages).length > 0 ? (
+            <div className="data-grid">
+              {Object.entries(voltages)
+                .sort(([a], [b]) => {
+                  if (a === '0') return -1;
+                  if (b === '0') return 1;
+                  return (parseInt(a.replace(/\D/g, '')) || 0) - (parseInt(b.replace(/\D/g, '')) || 0);
+                })
+                .map(([node, v]) => (
+                  <div key={node} className="data-item">
+                    <div className="data-label-wrap">
+                      <span className="data-label" title={`Node ${node}`}>
+                        {buildNodeDescriptions(voltages, simulation_data)[node] ?? node}
+                      </span>
+                      <span className="data-subtext">V({node})</span>
+                    </div>
+                    <span className={`data-value${v === 0 ? ' data-value-zero' : ''}`}>{fmtVoltage(v)}</span>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className="empty-data-state">
+              <p>No node voltage data available</p>
+              <small>Check that ngspice completed successfully</small>
+            </div>
+          )}
+        </section>
+
+        {/* Branch currents */}
+        <section className="result-section">
+          <h4 className="section-title">🔌 Branch Currents</h4>
+          {(() => {
+            const visible = Object.entries(currents).filter(
+              ([src]) => !ammeterSpiceKeys.has(src.toUpperCase())
+            );
+            return visible.length > 0 ? (
+              <div className="data-grid">
+                {visible.map(([src, a]) => (
+                  <div key={src} className="data-item">
+                    <div className="data-label-wrap">
+                      <span className="data-label" title={`Current through ${src}`}>
+                        {buildCurrentLabel(src, simulation_data)}
+                      </span>
+                      <span className="data-subtext">I({src})</span>
+                    </div>
+                    <span className="data-value">{fmtCurrent(a)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-data-state">
+                <p>No current data available</p>
+                <small>Check that ngspice completed successfully</small>
+              </div>
+            );
+          })()}
+        </section>
+
+        {/* Structural faults — always rendered, empty state when clean */}
+        <section className="result-section">
+          <h4 className="section-title">⚠ Structural Faults</h4>
+          {hasFaults ? (
+            <ul className="fault-list">
+              {structural_faults.map((f, i) => (
+                <li key={i} className="fault-item fault-warn">{f}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="no-faults-line">No structural faults detected.</p>
+          )}
+        </section>
+
+        {/* ML Classification */}
+        {pattern_faults && (
+          <section className="result-section">
+            <h4 className="section-title">ML Fault Classification</h4>
+            <div className={mlCardClass(pattern_faults.fault_type)}>
+              <div className="ml-prediction-row">
+                <strong className="ml-predicted">
+                  {displayLabel(pattern_faults.predicted_fault)}
+                </strong>
+                <span className={confidenceClass(pattern_faults.confidence)}>
+                  {(pattern_faults.confidence * 100).toFixed(0)}%
+                </span>
+              </div>
+              <p className="ml-description">{pattern_faults.description}</p>
+              {!isNormalML &&
+                pattern_faults.all_probabilities &&
+                Object.keys(pattern_faults.all_probabilities).length > 0 && (
+                <div className="ml-probs">
+                  {Object.entries(pattern_faults.all_probabilities)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([label, prob]) => (
+                      <div key={label} className="ml-prob-row">
+                        <span className="ml-prob-label">{displayLabel(label)}</span>
+                        <div className="ml-prob-bar-wrap">
+                          <div
+                            className={`ml-prob-bar${prob >= 0.5 ? ' ml-prob-bar-fired' : ''}`}
+                            style={{ width: `${Math.round(prob * 100)}%` }}
+                          />
+                        </div>
+                        <span className="ml-prob-pct">{(prob * 100).toFixed(0)}%</span>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+      </div>
     </aside>
   );
 }

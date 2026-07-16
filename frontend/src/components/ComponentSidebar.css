@@ -77,3 +77,30 @@
   color: #555;
   font-family: monospace;
 }
+
+/* ── Meter hint text ─────────────────────────────────────────────────────── */
+.component-hint {
+  font-size: 9px;
+  color: #888;
+  font-family: monospace;
+  font-style: italic;
+  margin-top: 1px;
+}
+
+/* ── Ammeter sidebar item (red accent) ───────────────────────────────────── */
+.component-item-ammeter {
+  border-color: #c0392b !important;
+  background: #fff5f5 !important;
+}
+.component-item-ammeter .component-label { color: #c0392b; }
+.component-item-ammeter .component-icon  { color: #c0392b; }
+.component-item-ammeter:hover            { background: #fde8e8 !important; }
+
+/* ── Voltmeter sidebar item (blue accent) ────────────────────────────────── */
+.component-item-voltmeter {
+  border-color: #1a6ab5 !important;
+  background: #f0f4ff !important;
+}
+.component-item-voltmeter .component-label { color: #1a6ab5; }
+.component-item-voltmeter .component-icon  { color: #1a6ab5; }
+.component-item-voltmeter:hover            { background: #dce8ff !important; }

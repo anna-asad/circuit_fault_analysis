@@ -1,391 +1,374 @@
-"""Structural Fault Detector - Union-find connectivity analysis"""
+"""
+Structural Fault Detector
+=========================
+Uses union-find connectivity analysis to detect wiring faults.
+
+Meter validation logic
+──────────────────────
+Ammeter (in-parallel check)
+  An ammeter is in series when removing it disconnects the circuit — i.e. its
+  two terminals are NOT already connected through any other path.
+  It is in parallel when the two terminals ARE connected through another path
+  (meaning current can bypass the ammeter, making the reading wrong and
+  potentially creating a near-short).
+
+Voltmeter (in-series check)
+  A voltmeter is in parallel when its two terminals are already connected
+  through the rest of the circuit (so it just "reads" across those nodes).
+  It is in series when removing it would break the circuit — i.e. its
+  terminals have NO other path between them.  This blocks current flow.
+"""
 
 from typing import Dict, List, Set, Tuple, Optional
 
 
+# ── Union-Find ────────────────────────────────────────────────────────────────
+
 class UnionFind:
-    """Union-Find (Disjoint Set Union) data structure for connectivity."""
-    
     def __init__(self):
-        self.parent = {}
-        self.rank = {}
-    
+        self.parent: Dict = {}
+        self.rank:   Dict = {}
+
     def make_set(self, x):
-        """Create a new set with element x."""
         if x not in self.parent:
             self.parent[x] = x
-            self.rank[x] = 0
-    
+            self.rank[x]   = 0
+
     def find(self, x):
-        """Find the root of the set containing x (with path compression)."""
         if x not in self.parent:
             self.make_set(x)
-        
         if self.parent[x] != x:
-            self.parent[x] = self.find(self.parent[x])  # Path compression
-        
+            self.parent[x] = self.find(self.parent[x])
         return self.parent[x]
-    
+
     def union(self, x, y):
-        """Merge the sets containing x and y (union by rank)."""
-        root_x = self.find(x)
-        root_y = self.find(y)
-        
-        if root_x == root_y:
-            return  # Already in same set
-        
-        # Union by rank
-        if self.rank[root_x] < self.rank[root_y]:
-            self.parent[root_x] = root_y
-        elif self.rank[root_x] > self.rank[root_y]:
-            self.parent[root_y] = root_x
+        rx, ry = self.find(x), self.find(y)
+        if rx == ry:
+            return
+        if self.rank[rx] < self.rank[ry]:
+            self.parent[rx] = ry
+        elif self.rank[rx] > self.rank[ry]:
+            self.parent[ry] = rx
         else:
-            self.parent[root_y] = root_x
-            self.rank[root_x] += 1
-    
-    def connected(self, x, y):
-        """Check if x and y are in the same set."""
+            self.parent[ry] = rx
+            self.rank[rx] += 1
+
+    def connected(self, x, y) -> bool:
         return self.find(x) == self.find(y)
-    
-    def get_components(self):
-        """Get all connected components as sets."""
-        components = {}
+
+    def get_components(self) -> List[Set]:
+        groups: Dict = {}
         for node in self.parent:
             root = self.find(node)
-            if root not in components:
-                components[root] = set()
-            components[root].add(node)
-        
-        return list(components.values())
+            groups.setdefault(root, set()).add(node)
+        return list(groups.values())
 
+
+def _build_uf_excluding(circuit_data: Dict,
+                         exclude_types: Tuple[str, ...] = ()) -> UnionFind:
+    """
+    Build a UnionFind over electrical nodes, connecting them through every
+    component whose type is NOT in *exclude_types*.
+    """
+    uf = UnionFind()
+    for node in circuit_data.get("nodes", []):
+        uf.make_set(node)
+    for comp in circuit_data.get("components", []):
+        if comp.get("type") in exclude_types:
+            continue
+        ns = comp.get("nodes", [])
+        if len(ns) >= 2:
+            uf.union(ns[0], ns[1])
+    return uf
+
+
+# ── Main detector ─────────────────────────────────────────────────────────────
 
 class StructuralFaultDetector:
-    """Detects structural/wiring faults in circuits."""
-    
+
     def __init__(self):
-        self.faults = []
-    
+        self.faults: List[str] = []
+
     def detect_faults(self, circuit_data: Dict, simulation_result: Dict) -> List[str]:
-        """
-        Detect all structural faults in circuit.
-        
-        Args:
-            circuit_data: Circuit definition
-            simulation_result: Results from ngspice simulation
-            
-        Returns:
-            List of fault descriptions
-        """
         self.faults = []
-        
-        # Run all structural checks
+
         self._check_missing_ground(circuit_data)
         self._check_open_circuits(circuit_data)
         self._check_short_circuits(circuit_data, simulation_result)
-        self._check_ammeter_in_parallel(circuit_data)
-        self._check_voltmeter_in_series(circuit_data)
+        self._check_ammeter_placement(circuit_data)
+        self._check_voltmeter_placement(circuit_data)
         self._check_component_bypasses(circuit_data)
         self._check_reversed_polarity(circuit_data)
-        self._check_series_parallel_confusion(circuit_data)
-        
+
         return self.faults
-    
+
+    # ── Ground ────────────────────────────────────────────────────────────────
+
     def _check_missing_ground(self, circuit_data: Dict):
-        """
-        Check if circuit has a proper ground reference.
-        Missing ground reference — no node tied to ground (node 0).
-        """
         ground = circuit_data.get("ground", "0")
-        nodes = circuit_data.get("nodes", [])
-        components = circuit_data.get("components", [])
-        
-        # Check if ground node exists in nodes list
+        nodes  = circuit_data.get("nodes", [])
+        comps  = circuit_data.get("components", [])
+
         if ground not in nodes:
             self.faults.append(
-                f"Missing ground reference: Ground node '{ground}' not found in circuit"
+                f"Missing ground reference: node '{ground}' not found in circuit."
             )
             return
-        
-        # Check if any component is connected to ground
-        ground_connected = False
-        for component in components:
-            if ground in component.get("nodes", []):
-                ground_connected = True
-                break
-        
-        if not ground_connected:
+
+        if not any(ground in c.get("nodes", []) for c in comps):
             self.faults.append(
-                f"Missing ground reference: No components connected to ground node '{ground}'"
+                f"Missing ground reference: no component is connected to ground node '{ground}'."
             )
-    
+
+    # ── Open circuits ─────────────────────────────────────────────────────────
+
     def _check_open_circuits(self, circuit_data: Dict):
         """
-        Detect open circuits using union-find.
-        Open circuit / broken wire — a break in the path; no connection from source to ground.
+        Connectivity check excluding voltmeters (they don't conduct DC current).
+        Every node must be reachable from ground.
         """
-        uf = UnionFind()
+        uf     = _build_uf_excluding(circuit_data, exclude_types=("voltmeter",))
         ground = circuit_data.get("ground", "0")
-        
-        # Add all nodes
-        for node in circuit_data.get("nodes", []):
-            uf.make_set(node)
-        
-        # Connect nodes through components (excluding voltmeters which block DC current)
-        for component in circuit_data.get("components", []):
-            nodes = component.get("nodes", [])
-            comp_type = component.get("type")
-            
-            # Voltmeter doesn't conduct current - acts as open circuit
-            if comp_type == "voltmeter":
-                continue
-            
-            # Connect nodes through this component
-            if len(nodes) >= 2:
-                uf.union(nodes[0], nodes[1])
-        
-        # Check if all nodes are connected to ground
-        components_sets = uf.get_components()
-        
-        # Find ground's component set
-        ground_component_set = None
-        for comp_set in components_sets:
-            if ground in comp_set:
-                ground_component_set = comp_set
+
+        # Find ground's group
+        ground_group = None
+        for group in uf.get_components():
+            if ground in group:
+                ground_group = group
                 break
-        
-        # Check for isolated components (open circuit)
-        for comp_set in components_sets:
-            if comp_set != ground_component_set and len(comp_set) > 0:
-                isolated_nodes = sorted(comp_set)
+
+        for group in uf.get_components():
+            if group is ground_group:
+                continue
+            if len(group) > 0:
                 self.faults.append(
-                    f"Open circuit / broken wire: Nodes {', '.join(isolated_nodes)} have no path to ground"
+                    f"Open circuit / broken wire: nodes {', '.join(sorted(group))} "
+                    f"have no conducting path to ground."
                 )
-        
-        # Check if voltage/current sources are connected to ground
-        for component in circuit_data.get("components", []):
-            if component.get("type") in ["dc_source", "current_source"]:
-                comp_nodes = component.get("nodes", [])
-                source_connected_to_ground = any(
-                    uf.connected(node, ground) for node in comp_nodes
-                )
-                
-                if not source_connected_to_ground:
+
+        for comp in circuit_data.get("components", []):
+            if comp.get("type") in ("dc_source", "current_source"):
+                if not all(uf.connected(n, ground) for n in comp.get("nodes", [])):
                     self.faults.append(
-                        f"Open circuit: Voltage source {component['id']} not connected to ground"
+                        f"Open circuit: source {comp['id']} is not connected to ground."
                     )
-    
+
+    # ── Short circuits ────────────────────────────────────────────────────────
+
     def _check_short_circuits(self, circuit_data: Dict, simulation_result: Dict):
-        """
-        Detect short circuits from simulation results.
-        Short circuit — unintended direct connection; simulation shows voltage collapsing to ~zero across a component.
-        """
         if not simulation_result or not simulation_result.get("success"):
             return
-        
-        voltages = simulation_result.get("voltages", {})
-        currents = simulation_result.get("currents", {})
-        max_current = max((abs(current) for current in currents.values()), default=0.0)
-        
-        # Check for excessive current (> 1A indicates likely short) on source components only.
-        # Resistor currents can legitimately exceed 1 A in a simple current-driven loop.
-        for source, current in currents.items():
-            component = next(
-                (comp for comp in circuit_data.get("components", []) if comp.get("id") == source),
+
+        voltages   = simulation_result.get("voltages", {})
+        currents   = simulation_result.get("currents", {})
+        max_current = max((abs(v) for v in currents.values()), default=0.0)
+
+        for src, current in currents.items():
+            comp = next(
+                (c for c in circuit_data.get("components", []) if c.get("id") == src),
                 None,
             )
-            if component and component.get("type") == "current_source":
+            if comp and comp.get("type") == "current_source":
                 continue
-
-            if not component or component.get("type") != "dc_source":
+            if not comp or comp.get("type") != "dc_source":
                 continue
-
-            if abs(current) > 1.0:  # 1A threshold
+            if abs(current) > 1.0:
                 self.faults.append(
-                    f"Short circuit: Excessive current through {source} ({abs(current):.3f}A) - indicates unintended direct connection"
+                    f"Short circuit: excessive current through {src} "
+                    f"({abs(current):.3f} A) — likely an unintended direct connection."
                 )
-        
-        # Check for voltage collapsing across components (near-zero voltage drop)
-        for component in circuit_data.get("components", []):
-            comp_type = component.get("type")
-            comp_id = component.get("id")
-            
-            # Check resistors, capacitors, inductors for voltage collapse
-            if comp_type in ["resistor", "capacitor", "inductor"]:
-                nodes = component.get("nodes", [])
-                if len(nodes) == 2:
-                    v1 = voltages.get(nodes[0], 0)
-                    v2 = voltages.get(nodes[1], 0)
-                    voltage_drop = abs(v1 - v2)
-                    
-                    # For resistors, only treat near-zero voltage as a short when current is actually flowing.
-                    if comp_type == "resistor" and voltage_drop < 0.01 and max_current > 0.01:
-                        self.faults.append(
-                            f"Short circuit across {comp_id}: Voltage collapsed to ~zero ({voltage_drop:.4f}V) - component may be shorted or bypassed"
-                        )
-                    
-                    # Check if voltage/current source is shorted (near-zero voltage)
-            if comp_type in ["dc_source", "current_source"]:
-                nodes = component.get("nodes", [])
-                if len(nodes) == 2:
-                    v1 = voltages.get(nodes[0], 0)
-                    v2 = voltages.get(nodes[1], 0)
-                    voltage_output = abs(v1 - v2)
-                    expected_voltage = component.get("value", 0)
-                    
-                    # If voltage source output is much less than expected, it's shorted
-                    if expected_voltage > 0 and voltage_output < expected_voltage * 0.1 and max_current > 0.01:
-                        self.faults.append(
-                            f"Short circuit: Voltage source {comp_id} output collapsed (expected {expected_voltage:.2f}V, got {voltage_output:.4f}V)"
-                        )
-    
-    def _check_ammeter_in_parallel(self, circuit_data: Dict):
-        """
-        Ammeter connected in parallel — should be in series; wrong placement can create a short.
-        """
-        components = circuit_data.get("components", [])
-        
-        for component in components:
-            if component.get("type") == "ammeter":
-                comp_id = component.get("id")
-                nodes = set(component.get("nodes", []))
-                
-                # Check if there are other conducting components connecting same nodes
-                parallel_components = [
-                    c for c in components 
-                    if c != component and 
-                    set(c.get("nodes", [])) == nodes and
-                    c.get("type") not in ["voltmeter"]  # Voltmeter in parallel is OK
-                ]
-                
-                if parallel_components:
-                    parallel_ids = [c.get("id") for c in parallel_components]
+
+        for comp in circuit_data.get("components", []):
+            ctype, cid = comp.get("type"), comp.get("id")
+            ns = comp.get("nodes", [])
+            if ctype in ("resistor", "capacitor", "inductor") and len(ns) == 2:
+                v1, v2 = voltages.get(ns[0], 0), voltages.get(ns[1], 0)
+                vdrop  = abs(v1 - v2)
+                if ctype == "resistor" and vdrop < 0.01 and max_current > 0.01:
                     self.faults.append(
-                        f"Ammeter in parallel: {comp_id} is connected in parallel with {', '.join(parallel_ids)} - should be in series. Wrong placement can create a short."
+                        f"Short circuit across {cid}: voltage collapsed to "
+                        f"~{vdrop:.4f} V — component may be shorted or bypassed."
                     )
-    
-    def _check_voltmeter_in_series(self, circuit_data: Dict):
+
+            if ctype == "dc_source" and len(ns) == 2:
+                v1, v2   = voltages.get(ns[0], 0), voltages.get(ns[1], 0)
+                vout     = abs(v1 - v2)
+                expected = comp.get("value", 0)
+                if expected > 0 and vout < expected * 0.1 and max_current > 0.01:
+                    self.faults.append(
+                        f"Short circuit: source {cid} output collapsed "
+                        f"(expected {expected:.2f} V, got {vout:.4f} V)."
+                    )
+
+    # ── Ammeter placement ─────────────────────────────────────────────────────
+
+    def _check_ammeter_placement(self, circuit_data: Dict):
         """
-        Voltmeter connected in series — should be in parallel; wrong placement blocks current flow.
+        An ammeter must be in SERIES, meaning it is the ONLY conducting path
+        between its two terminals.
+
+        Correct topology test
+        ─────────────────────
+        Remove the ammeter AND all components connected to ground from the
+        union-find, then ask: are the ammeter's two terminals still connected
+        through purely non-ground paths?
+
+        Simpler equivalent (used here):
+        Build a UF of all components EXCEPT:
+          • this ammeter
+          • any component that has ground ('0') as one of its nodes
+
+        If the ammeter's terminal nodes are still connected in that reduced
+        graph, there is a parallel path that does NOT go through ground — the
+        ammeter is genuinely in parallel with something.
+
+        If they are NOT connected (or only connected through ground), the
+        ammeter is in series — correct placement, no fault.
         """
-        # Build connectivity graph excluding voltmeters
-        uf_without_voltmeter = UnionFind()
-        ground = circuit_data.get("ground", "0")
-        
-        for node in circuit_data.get("nodes", []):
-            uf_without_voltmeter.make_set(node)
-        
-        # Connect nodes through all components EXCEPT voltmeters
-        for component in circuit_data.get("components", []):
-            if component.get("type") != "voltmeter":
-                nodes = component.get("nodes", [])
-                if len(nodes) >= 2:
-                    uf_without_voltmeter.union(nodes[0], nodes[1])
-        
-        # Now check each voltmeter
-        for component in circuit_data.get("components", []):
-            if component.get("type") == "voltmeter":
-                comp_id = component.get("id")
-                nodes = component.get("nodes", [])
-                
-                if len(nodes) >= 2:
-                    # If removing this voltmeter breaks connectivity to ground, it's in series (bad)
-                    if not uf_without_voltmeter.connected(nodes[0], nodes[1]):
-                        self.faults.append(
-                            f"Voltmeter in series: {comp_id} is in series with circuit - should be in parallel. Wrong placement blocks current flow."
-                        )
-    
+        all_comps = circuit_data.get("components", [])
+        ground    = circuit_data.get("ground", "0")
+
+        for ammeter in all_comps:
+            if ammeter.get("type") != "ammeter":
+                continue
+
+            aid   = ammeter.get("id", "ammeter")
+            nodes = ammeter.get("nodes", [])
+            if len(nodes) < 2:
+                continue
+
+            n_plus, n_minus = nodes[0], nodes[1]
+
+            # Build connectivity WITHOUT:
+            #   1. This ammeter itself
+            #   2. Any component that touches ground (they all share the ground
+            #      bus, which would make every pair of nodes look "connected")
+            uf = UnionFind()
+            for node in circuit_data.get("nodes", []):
+                uf.make_set(node)
+
+            for comp in all_comps:
+                if comp is ammeter:
+                    continue
+                comp_nodes = comp.get("nodes", [])
+                # Skip components that connect through ground — those create a
+                # common ground bus that connects everything and produces false
+                # positives for the parallel check.
+                if ground in comp_nodes:
+                    continue
+                if len(comp_nodes) >= 2:
+                    uf.union(comp_nodes[0], comp_nodes[1])
+
+            if uf.connected(n_plus, n_minus):
+                # There is a non-ground parallel path bypassing the ammeter
+                self.faults.append(
+                    f"Ammeter {aid} must be connected in series, not in parallel. "
+                    f"Its terminals ({n_plus}, {n_minus}) are already connected "
+                    f"through other components, so the ammeter is being bypassed. "
+                    f"Break the wire at that point and insert the ammeter in series."
+                )
+
+    # ── Voltmeter placement ───────────────────────────────────────────────────
+
+    def _check_voltmeter_placement(self, circuit_data: Dict):
+        """
+        A voltmeter must be in PARALLEL: its two terminals must already be
+        connected through the rest of the circuit WITHOUT going through ground.
+
+        A voltmeter is in series when it is the only non-ground path between
+        its two terminals.  To detect this we build a UF excluding:
+          • this voltmeter
+          • all other voltmeters (they don't conduct DC)
+          • components that touch ground (same reason as ammeter check — they
+            form a common bus and would make every node pair look connected)
+
+        If the terminals are NOT connected in that reduced graph, the voltmeter
+        is the only bridge between them → it is in series → fault.
+        """
+        all_comps = circuit_data.get("components", [])
+        ground    = circuit_data.get("ground", "0")
+
+        for vm in all_comps:
+            if vm.get("type") != "voltmeter":
+                continue
+
+            vid   = vm.get("id", "voltmeter")
+            nodes = vm.get("nodes", [])
+            if len(nodes) < 2:
+                continue
+
+            n_plus, n_minus = nodes[0], nodes[1]
+
+            uf = UnionFind()
+            for node in circuit_data.get("nodes", []):
+                uf.make_set(node)
+
+            for comp in all_comps:
+                if comp is vm:
+                    continue
+                if comp.get("type") == "voltmeter":
+                    continue
+                comp_nodes = comp.get("nodes", [])
+                # Exclude ground-connected components to avoid the common-bus
+                # false-connection problem.
+                if ground in comp_nodes:
+                    continue
+                if len(comp_nodes) >= 2:
+                    uf.union(comp_nodes[0], comp_nodes[1])
+
+            if not uf.connected(n_plus, n_minus):
+                self.faults.append(
+                    f"Voltmeter {vid} must be connected in parallel, not in series. "
+                    f"Its terminals ({n_plus}, {n_minus}) have no other conducting path "
+                    f"between them, so the voltmeter is blocking current flow. "
+                    f"Connect it across (in parallel with) an existing component or node pair."
+                )
+
+    # ── Component bypasses ────────────────────────────────────────────────────
+
     def _check_component_bypasses(self, circuit_data: Dict):
-        """
-        Wires bypassing a component — a wire creates an unintended connection around a component 
-        instead of through it, effectively shorting it out.
-        """
-        components = circuit_data.get("components", [])
-        
-        # For each resistor/capacitor/inductor, check if there are parallel conducting paths
-        for component in components:
-            comp_type = component.get("type")
-            comp_id = component.get("id")
-            
-            # Only check components that should have voltage drop
-            if comp_type in ["resistor", "capacitor", "inductor"]:
-                nodes = set(component.get("nodes", []))
-                
-                # Check if there are other low-resistance paths connecting same nodes
-                bypass_components = []
-                
-                for other_comp in components:
-                    if other_comp == component:
-                        continue
-                    
-                    other_nodes = set(other_comp.get("nodes", []))
-                    other_type = other_comp.get("type")
-                    
-                    # If same nodes and it's a low-resistance component, it's a bypass
-                    if other_nodes == nodes:
-                        # Wires (if they existed as components) or very low resistance
-                        if other_type == "resistor" and other_comp.get("value", float('inf')) < 1:
-                            bypass_components.append(other_comp.get("id"))
-                        # Direct wire connections would be detected here
-                
-                if bypass_components:
-                    self.faults.append(
-                        f"Component bypass: {comp_id} is bypassed by {', '.join(bypass_components)} - unintended parallel connection shorts it out"
-                    )
-    
+        comps = circuit_data.get("components", [])
+        for comp in comps:
+            ctype, cid = comp.get("type"), comp.get("id")
+            if ctype not in ("resistor", "capacitor", "inductor"):
+                continue
+            nodes = set(comp.get("nodes", []))
+            bypass = [
+                c.get("id") for c in comps
+                if c is not comp
+                and set(c.get("nodes", [])) == nodes
+                and c.get("type") == "resistor"
+                and c.get("value", float("inf")) < 1
+            ]
+            if bypass:
+                self.faults.append(
+                    f"Component bypass: {cid} is bypassed by {', '.join(bypass)} "
+                    f"— unintended parallel connection shorts it out."
+                )
+
+    # ── Reversed polarity ─────────────────────────────────────────────────────
+
     def _check_reversed_polarity(self, circuit_data: Dict):
-        """
-        Reversed power source polarity — battery/voltage source connected backwards.
-        Check if DC voltage source positive terminal is connected to ground.
-        Note: Current sources don't have polarity issues - only direction matters.
-        """
         ground = circuit_data.get("ground", "0")
-        
-        for component in circuit_data.get("components", []):
-            # Only check voltage sources for polarity - current sources don't have polarity
-            if component.get("type") == "dc_source":
-                comp_id = component.get("id")
-                nodes = component.get("nodes", [])
-                
-                if len(nodes) >= 2:
-                    positive_node = nodes[0]  # First node is positive by convention
-                    negative_node = nodes[1]  # Second node is negative by convention
-                    
-                    # If positive terminal is ground, polarity is reversed
-                    if positive_node == ground:
-                        self.faults.append(
-                            f"Reversed voltage source polarity: {comp_id} positive terminal connected to ground - battery/source connected backwards"
-                        )
-                    
-                    # Alternative check: if negative is at higher potential than positive
-                    # This would need simulation results to verify
-    
-    def _check_series_parallel_confusion(self, circuit_data: Dict):
-        """
-        Series vs. parallel confusion — components connected in the wrong arrangement 
-        relative to design intent.
-        
-        This is difficult to detect without knowing design intent, but we can warn about
-        suspicious patterns like very unbalanced resistor networks.
-        """
-        # This would require design intent specification or ML pattern recognition
-        # For now, we'll detect obvious issues like mismatched parallel resistors
-        pass
+        for comp in circuit_data.get("components", []):
+            if comp.get("type") != "dc_source":
+                continue
+            ns = comp.get("nodes", [])
+            if len(ns) >= 2 and ns[0] == ground:
+                self.faults.append(
+                    f"Reversed polarity: {comp['id']} positive terminal is connected "
+                    f"to ground — the source is wired backwards."
+                )
 
 
-def detect_structural_faults(circuit_data: Dict, simulation_result: Dict = None) -> List[str]:
-    """
-    Convenience function to detect structural faults.
-    
-    Args:
-        circuit_data: Circuit definition
-        simulation_result: Optional simulation results for advanced detection
-        
-    Returns:
-        List of fault descriptions
-    """
-    detector = StructuralFaultDetector()
-    return detector.detect_faults(circuit_data, simulation_result or {})
+# ── Convenience wrapper ───────────────────────────────────────────────────────
+
+def detect_structural_faults(circuit_data: Dict,
+                              simulation_result: Dict = None) -> List[str]:
+    return StructuralFaultDetector().detect_faults(
+        circuit_data, simulation_result or {}
+    )
 
 
 if __name__ == "__main__":
-    print("Structural Fault Detector - Use via API")
+    print("Structural Fault Detector — import and call detect_structural_faults().")

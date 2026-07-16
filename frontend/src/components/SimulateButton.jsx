@@ -33,10 +33,19 @@ function SimulateButton({ circuit, onSimulate, isSimulating, setIsSimulating }) 
       });
       
       const circuitData = convertCircuitToBackendFormat(nodes, edges);
-      
+
       console.log('✅ Sending to backend:', circuitData);
 
+      // meters is frontend-only metadata — attach it so the backend echoes it
+      // back inside simulation_data for the ResultsPanel to consume.
       const response = await axios.post(`${API_URL}/api/simulate`, circuitData);
+
+      // Inject meters into the response so ResultsPanel can display readings
+      // even if the backend doesn't echo them (graceful fallback).
+      if (response.data?.simulation_data && circuitData.meters?.length) {
+        response.data.simulation_data.meters =
+          response.data.simulation_data.meters ?? circuitData.meters;
+      }
       
       console.log('🎉 Simulation Results:', {
         success: response.data.success,

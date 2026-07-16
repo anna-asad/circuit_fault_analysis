@@ -50,6 +50,26 @@ const COMPONENT_SVGS = {
       <path d="M 50 15 L 50 35 M 45 30 L 50 35 L 55 30" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinejoin="miter"/>
     </svg>
   ),
+  // Ammeter: circle with 'A' — two leads, must be wired in series
+  ammeter: (
+    <svg className="component-svg" viewBox="0 0 100 40" preserveAspectRatio="xMidYMid meet">
+      <line x1="0"  y1="20" x2="25" y2="20" stroke="currentColor" strokeWidth="2.5"/>
+      <circle cx="50" cy="20" r="16" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+      <text x="50" y="25" textAnchor="middle" fontSize="14" fontWeight="bold"
+            fontFamily="monospace" fill="currentColor">A</text>
+      <line x1="75" y1="20" x2="100" y2="20" stroke="currentColor" strokeWidth="2.5"/>
+    </svg>
+  ),
+  // Voltmeter: circle with 'V' — two leads, must be wired in parallel
+  voltmeter: (
+    <svg className="component-svg" viewBox="0 0 100 40" preserveAspectRatio="xMidYMid meet">
+      <line x1="0"  y1="20" x2="25" y2="20" stroke="currentColor" strokeWidth="2.5"/>
+      <circle cx="50" cy="20" r="16" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+      <text x="50" y="25" textAnchor="middle" fontSize="14" fontWeight="bold"
+            fontFamily="monospace" fill="currentColor">V</text>
+      <line x1="75" y1="20" x2="100" y2="20" stroke="currentColor" strokeWidth="2.5"/>
+    </svg>
+  ),
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -60,6 +80,8 @@ const DEFAULT_VALUES = {
   capacitor: 1e-7,
   inductor: 1e-6,
   ground: 0,
+  ammeter: 0,    // ideal: 0 Ω
+  voltmeter: 0,  // ideal: ∞ Ω (represented as 0, never used as a real value)
 };
 
 const NODE_STYLES = {
@@ -74,7 +96,7 @@ const NODE_STYLES = {
     textAlign: 'center',
     minWidth: '80px',
     minHeight: '52px',
-    background: '#f0f0e8',   // LTSpice yellowish off-white
+    background: '#f0f0e8',
     color: '#1a1a1a',
   },
   junction: {
@@ -91,6 +113,36 @@ const NODE_STYLES = {
     border: 'none',
     minWidth: '44px',
     minHeight: '52px',
+  },
+  // Ammeter: red accent border — series device
+  ammeter: {
+    padding: '4px 8px',
+    borderRadius: '3px',
+    fontSize: '11px',
+    fontWeight: '600',
+    fontFamily: 'monospace',
+    border: '1.5px solid #c0392b',
+    whiteSpace: 'pre-line',
+    textAlign: 'center',
+    minWidth: '80px',
+    minHeight: '52px',
+    background: '#fff5f5',
+    color: '#c0392b',
+  },
+  // Voltmeter: blue accent border — parallel device
+  voltmeter: {
+    padding: '4px 8px',
+    borderRadius: '3px',
+    fontSize: '11px',
+    fontWeight: '600',
+    fontFamily: 'monospace',
+    border: '1.5px solid #1a6ab5',
+    whiteSpace: 'pre-line',
+    textAlign: 'center',
+    minWidth: '80px',
+    minHeight: '52px',
+    background: '#f0f4ff',
+    color: '#1a6ab5',
   },
 };
 
@@ -139,13 +191,17 @@ function formatValue(value, type) {
 function formatNodeValue(type, value) {
   if (type === 'dc_source') return `${value}V`;
   if (type === 'current_source') return formatValue(value, type);
+  if (type === 'ammeter')   return '— A —';
+  if (type === 'voltmeter') return '— V —';
   return formatValue(value, type);
 }
 
 function getNodeStyle(type) {
-  if (type === 'junction') return NODE_STYLES.junction;
-  if (type === 'ground')   return NODE_STYLES.ground;
-  if (type === 'dc_source') return { ...NODE_STYLES.base, minWidth: '90px' };
+  if (type === 'junction')      return NODE_STYLES.junction;
+  if (type === 'ground')        return NODE_STYLES.ground;
+  if (type === 'ammeter')       return NODE_STYLES.ammeter;
+  if (type === 'voltmeter')     return NODE_STYLES.voltmeter;
+  if (type === 'dc_source')     return { ...NODE_STYLES.base, minWidth: '90px' };
   if (type === 'current_source') return { ...NODE_STYLES.base, minWidth: '90px' };
   return NODE_STYLES.base;
 }
@@ -260,6 +316,12 @@ function ComponentNode({ id, data, mode }) {
             onCancel={() => data.onCancelDraft?.(id)}
           />
         ) : (
+          // Meters have no user-editable value — show a read-only placeholder
+          componentType === 'ammeter' || componentType === 'voltmeter' ? (
+            <span className="meter-placeholder">
+              {componentType === 'ammeter' ? 'series' : 'parallel'}
+            </span>
+          ) : (
           <button
             type="button"
             className="value-button"
@@ -271,6 +333,7 @@ function ComponentNode({ id, data, mode }) {
           >
             {formatNodeValue(componentType, value)}
           </button>
+          )
         )}
       </div>
     </div>
@@ -383,29 +446,42 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
 
   // ── Wire connection ───────────────────────────────────────────────────────
   const onConnect = useCallback(
-    (params) =>
+    (params) => {
+      // Mark that a valid handle-to-handle connection was made so onConnectEnd
+      // does not also try to auto-insert a junction for the same drag gesture.
+      window.connectionHandled = true;
       setEdges((eds) =>
         addEdge(
           {
             ...params,
-            type: 'smoothstep',          // orthogonal elbow routing, LTSpice-style
+            type: 'smoothstep',
             animated: false,
             style: { stroke: '#1a1a1a', strokeWidth: 2 },
-            pathOptions: { borderRadius: 0 },  // sharp 90° elbows
+            pathOptions: { borderRadius: 0 },
           },
           eds
         )
-      ),
+      );
+    },
     [setEdges]
   );
 
   // ── Handle ground connecting to edges (wires) ────────────────────────────
   const onConnectStart = useCallback((event, { nodeId, handleId }) => {
-    window.connectionStart = { nodeId, handleId };
+    window.connectionStart   = { nodeId, handleId };
+    window.connectionHandled = false; // reset for this drag gesture
   }, []);
 
   const onConnectEnd = useCallback(
     (event) => {
+      // If onConnect already fired (handle-to-handle connection), skip the
+      // wire-splitting auto-junction logic entirely.
+      if (window.connectionHandled) {
+        window.connectionStart   = null;
+        window.connectionHandled = false;
+        return;
+      }
+
       const instance = reactFlowRef.current;
       if (!instance || !window.connectionStart) return;
 
@@ -533,7 +609,8 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
         });
       }
 
-      window.connectionStart = null;
+      window.connectionStart   = null;
+      window.connectionHandled = false;
     },
     [nodes, edges, setNodes, setEdges]
   );
@@ -571,6 +648,12 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
       } else if (type === 'inductor') {
         const lCount = nodes.filter(n => n.data?.componentType === 'inductor').length;
         componentId = `L${lCount + 1}`;
+      } else if (type === 'ammeter') {
+        const amCount = nodes.filter(n => n.data?.componentType === 'ammeter').length;
+        componentId = `AM${amCount + 1}`;
+      } else if (type === 'voltmeter') {
+        const vmCount = nodes.filter(n => n.data?.componentType === 'voltmeter').length;
+        componentId = `VM${vmCount + 1}`;
       } else if (type === 'ground') {
         componentId = '⏚';
       } else if (type === 'junction') {
@@ -714,6 +797,8 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
             if (node.data?.componentType === 'current_source') return '#7c3aed';
             if (node.data?.componentType === 'ground') return '#4b5563';
             if (node.data?.componentType === 'junction') return '#1a1a1a';
+            if (node.data?.componentType === 'ammeter')  return '#c0392b';
+            if (node.data?.componentType === 'voltmeter') return '#1a6ab5';
             return '#059669';
           }}
           maskColor="rgba(240,240,232,0.7)"

@@ -1,33 +1,52 @@
 /**
- * Convert React Flow graph to backend circuit format
- * 
- * LTspice-style ground handling:
- * - Ground is placed ON a wire (marks that wire as node '0')
- * - Components connect directly with wires
- * - Junctions optional for splits/merges
+ * Convert React Flow graph to backend circuit format.
+ *
+ * Meter handling
+ * ──────────────
+ * Ammeter  → included in netlist as a 0 V sense-voltage-source (Vsense).
+ *            ngspice reports I(Vsense_AM1) = branch current through it.
+ *            Structurally it must be in series (exactly one path through it).
+ *
+ * Voltmeter → included in netlist as a 1 GΩ resistor.
+ *             ngspice gives us the node voltages on both terminals; we compute
+ *             V = V(node+) − V(node−) in the frontend.
+ *             Structurally it must be in parallel (both terminals already
+ *             connected to the circuit without the voltmeter).
+ *
+ * A `meters` array is appended to the result so the backend / ResultsPanel
+ * can map simulation outputs back to the original meter IDs:
+ *   { id, type, spiceName, nodes: [n+, n−] }
  */
 
 export function convertCircuitToBackendFormat(nodes, edges) {
   if (!nodes || nodes.length === 0) {
     throw new Error('Circuit is empty. Add components.');
   }
-
   if (!edges || edges.length === 0) {
     throw new Error('No wires found. Connect components.');
   }
 
-  const groundNodes = nodes.filter(n => n.data?.componentType === 'ground');
-  const junctionNodes = nodes.filter(n => n.data?.componentType === 'junction');
+  // ── Partition nodes by role ───────────────────────────────────────────────
+  const groundNodes   = nodes.filter(n => n.data?.componentType === 'ground');
+  const meterTypes    = ['ammeter', 'voltmeter'];
+  const passThroughTypes = ['junction', 'ground', ...meterTypes];
+
+  // "component nodes" = everything that becomes a real SPICE element
+  // (includes meters — they get their own SPICE line)
   const componentNodes = nodes.filter(n => {
-    const type = n.data?.componentType;
-    return type && !['junction', 'ground'].includes(type);
+    const t = n.data?.componentType;
+    return t && !['junction', 'ground'].includes(t);
   });
 
-  // Build adjacency graph.
-  // Each entry maps nodeId → array of neighbor nodeIds (one entry per wire).
-  // We also track which handle each wire uses so we can detect overloaded handles.
-  const graph = new Map();          // nodeId → neighborId[]  (may contain duplicates for multi-wire junctions)
-  const handleEdges = new Map();    // "nodeId::handleId" → count  (max 1 per component pin)
+  // passive/source components only — used for the "needs 2 connections" check
+  const circuitNodes = nodes.filter(n => {
+    const t = n.data?.componentType;
+    return t && !passThroughTypes.includes(t);
+  });
+
+  // ── Build adjacency graph ─────────────────────────────────────────────────
+  const graph       = new Map(); // nodeId → neighborId[]
+  const handleEdges = new Map(); // "nodeId::handleId" → count
 
   edges.forEach(edge => {
     if (!graph.has(edge.source)) graph.set(edge.source, []);
@@ -35,351 +54,398 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     graph.get(edge.source).push(edge.target);
     graph.get(edge.target).push(edge.source);
 
-    // Track handle usage for component nodes only (not junctions/ground which are hubs)
     const srcType = nodes.find(n => n.id === edge.source)?.data?.componentType;
     const tgtType = nodes.find(n => n.id === edge.target)?.data?.componentType;
 
-    if (srcType && !['junction', 'ground'].includes(srcType) && edge.sourceHandle) {
+    // Track handle usage only for passive/source components — NOT for meters.
+    // An ammeter in series legitimately sits between a junction (which itself
+    // connects to ground) so the junction→ammeter wire and the
+    // source→ammeter wire both use the same handle ID; flagging that as an
+    // error is wrong.  Meter placement is validated structurally by the backend.
+    const SKIP_HANDLE_CHECK = ['junction', 'ground', 'ammeter', 'voltmeter'];
+
+    if (srcType && !SKIP_HANDLE_CHECK.includes(srcType) && edge.sourceHandle) {
       const key = `${edge.source}::${edge.sourceHandle}`;
       handleEdges.set(key, (handleEdges.get(key) ?? 0) + 1);
     }
-    if (tgtType && !['junction', 'ground'].includes(tgtType) && edge.targetHandle) {
+    if (tgtType && !SKIP_HANDLE_CHECK.includes(tgtType) && edge.targetHandle) {
       const key = `${edge.target}::${edge.targetHandle}`;
       handleEdges.set(key, (handleEdges.get(key) ?? 0) + 1);
     }
   });
 
-  // Validate: no component pin should have more than one wire
+  // ── Validate: no passive/source pin should have more than one wire ────────
   handleEdges.forEach((count, key) => {
     if (count > 1) {
-      const nodeId = key.split('::')[0];
+      const nodeId   = key.split('::')[0];
       const compNode = nodes.find(n => n.id === nodeId);
       const typeName = compNode?.data?.componentType ?? nodeId;
       const handleName = key.split('::')[1] ?? 'pin';
       throw new Error(
-        `${typeName}: The ${handleName} pin has ${count} wires connected — only 1 wire per pin is allowed.`
+        `${typeName}: The ${handleName} pin has ${count} wires — only 1 wire per pin is allowed.`
       );
     }
   });
 
-  // Validate ground has at least 1 connection
+  // ── Validate ground ───────────────────────────────────────────────────────
   if (groundNodes.length === 0) {
     throw new Error('Add a Ground reference point (⏚).');
   }
-
-  // Check that ground is connected, preferably to junctions
-  groundNodes.forEach(groundNode => {
-    const connections = graph.get(groundNode.id) || [];
-    
-    if (connections.length === 0) {
-      throw new Error('Ground not connected. Place a Junction (●) on a wire, then connect Ground to it.');
+  groundNodes.forEach(gn => {
+    const conns = graph.get(gn.id) || [];
+    if (conns.length === 0) {
+      throw new Error('Ground not connected. Wire ground to the circuit.');
     }
-
-    // Warn if ground connects directly to component (will use up one of its 2 terminals)
-    connections.forEach(connId => {
-      const connNode = nodes.find(n => n.id === connId);
-      const connType = connNode?.data?.componentType;
-      
-      if (connType && !['junction'].includes(connType)) {
-        console.warn('⚠️ Ground connected directly to a component. Best practice: connect ground to a Junction (●) placed on a wire.');
-      }
-    });
   });
 
-  // Create unique IDs for each component terminal
+  // ── Validate each component has exactly 2 distinct terminal branches ────────
+  // We walk through junctions (which are just wire nodes) to find the real
+  // endpoints at each side of the component.  This means a component wired
+  // as:  source ─── junction ─── ammeter ─── resistor
+  // correctly reports 2 terminal branches even though its direct neighbor on
+  // one side is a junction (not a "real" component).
   const terminalNodes = new Map();
-  
+
+  // Helper: from a starting component node, follow one wire through any chain
+  // of junctions and return all non-junction, non-ground endpoints reachable
+  // without crossing another real component.
+  function findTerminalBranches(compId) {
+    const branches = []; // each entry = { endId, endType, viaJunction }
+
+    // BFS from the component outward through junctions
+    const visited = new Set([compId]);
+    const queue   = (graph.get(compId) || []).map(nbr => ({ id: nbr, depth: 1 }));
+
+    while (queue.length > 0) {
+      const { id: cur } = queue.shift();
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+
+      const curType = nodes.find(n => n.id === cur)?.data?.componentType;
+
+      if (curType === 'junction') {
+        // Keep traversing through this junction
+        (graph.get(cur) || []).forEach(nbr => {
+          if (!visited.has(nbr)) queue.push({ id: nbr, depth: 2 });
+        });
+      } else {
+        // Real endpoint (component, ground, or dangling)
+        branches.push({ endId: cur, endType: curType });
+      }
+    }
+    return branches;
+  }
+
   componentNodes.forEach(comp => {
-    const connections = graph.get(comp.id) || [];
-    
-    // Count non-ground connections by NUMBER OF WIRES, not distinct neighbors.
-    // Two wires to the same component (e.g. resistor wired directly to both ends
-    // of a dc_source) are valid — they connect different pins of that neighbor.
-    // Ground connections don't count toward the required 2 pins.
-    const nonGroundConnections = connections.filter(connId => {
-      const connNode = nodes.find(n => n.id === connId);
-      return connNode?.data?.componentType !== 'ground';
-    });
-    
-    if (nonGroundConnections.length !== 2) {
-      const typeName = comp.data?.componentType ?? 'Component';
-      if (nonGroundConnections.length < 2) {
+    const ctype = comp.data?.componentType;
+
+    // Meters: only need to be connected (both pins wired) — structural
+    // series/parallel validation happens in the backend, not here.
+    // We still need them in terminalNodes so the union-find works.
+    const isMeter = meterTypes.includes(ctype);
+
+    const branches = findTerminalBranches(comp.id);
+
+    // Count non-ground branches
+    const nonGroundBranches = branches.filter(b => b.endType !== 'ground');
+
+    // For regular components we enforce exactly 2 electrical terminals.
+    // For meters we only enforce ≥ 1 on each side (i.e. both pins connected).
+    const directConns = (graph.get(comp.id) || []);
+    const hasAnyConnection = directConns.length >= 2 ||
+      (directConns.length === 1 && nonGroundBranches.length >= 1);
+
+    if (!isMeter && nonGroundBranches.length !== 2) {
+      const label = ctype ?? 'Component';
+      const id    = comp.data?.componentId ?? label;
+      if (nonGroundBranches.length < 2) {
         throw new Error(
-          `${typeName} has only ${nonGroundConnections.length} connection${nonGroundConnections.length === 1 ? '' : 's'} — connect both pins.`
+          `${id} has only ${nonGroundBranches.length} connection${nonGroundBranches.length === 1 ? '' : 's'} — connect both pins.`
         );
       } else {
         throw new Error(
-          `${typeName} has ${nonGroundConnections.length} connections but needs exactly 2 (one per pin). Check for duplicate wires.`
+          `${id} has ${nonGroundBranches.length} connections but needs exactly 2 (one per pin). Check for duplicate wires.`
         );
       }
     }
-    
-    terminalNodes.set(comp.id, [
-      `${comp.id}_t0`,
-      `${comp.id}_t1`
-    ]);
+
+    if (isMeter && directConns.length < 2) {
+      const id = comp.data?.componentId ?? ctype;
+      throw new Error(`${id} has only ${directConns.length} connection — connect both pins.`);
+    }
+
+    terminalNodes.set(comp.id, [`${comp.id}_t0`, `${comp.id}_t1`]);
   });
 
-  // Ground must be explicitly wired to the circuit.
-  // Do not auto-attach it to the nearest terminal.
+  // ── Ground connectivity ───────────────────────────────────────────────────
   const groundReference = groundNodes[0];
-  if (groundReference) {
-    const groundConnections = graph.get(groundReference.id) || [];
-    const hasGroundWire = groundConnections.some(connId => {
-      const connNode = nodes.find(n => n.id === connId);
-      return connNode && connNode.data?.componentType !== 'ground';
-    });
-
-    if (!hasGroundWire) {
-      throw new Error('Ground is not connected to the circuit! Wire ground to a component terminal.');
-    }
+  const groundConns = graph.get(groundReference.id) || [];
+  const hasGroundWire = groundConns.some(cid => {
+    const t = nodes.find(n => n.id === cid)?.data?.componentType;
+    return t && t !== 'ground';
+  });
+  if (!hasGroundWire) {
+    throw new Error('Ground is not connected to the circuit!');
   }
 
-  // Union-find setup - include terminals, junctions, grounds
+  // ── Union-Find setup ──────────────────────────────────────────────────────
   const allIds = [
     ...nodes.map(n => n.id),
-    ...Array.from(terminalNodes.values()).flat()
+    ...Array.from(terminalNodes.values()).flat(),
   ];
 
   const parent = new Map();
-  const rank = new Map();
-
-  allIds.forEach(id => {
-    parent.set(id, id);
-    rank.set(id, 0);
-  });
+  const rank   = new Map();
+  allIds.forEach(id => { parent.set(id, id); rank.set(id, 0); });
 
   function find(x) {
-    if (parent.get(x) !== x) {
-      parent.set(x, find(parent.get(x)));
-    }
+    if (parent.get(x) !== x) parent.set(x, find(parent.get(x)));
     return parent.get(x);
   }
-
   function union(x, y) {
-    const rootX = find(x);
-    const rootY = find(y);
-    if (rootX === rootY) return;
-    
-    if (rank.get(rootX) < rank.get(rootY)) {
-      parent.set(rootX, rootY);
-    } else if (rank.get(rootX) > rank.get(rootY)) {
-      parent.set(rootY, rootX);
-    } else {
-      parent.set(rootY, rootX);
-      rank.set(rootX, rank.get(rootX) + 1);
-    }
+    const rx = find(x), ry = find(y);
+    if (rx === ry) return;
+    if (rank.get(rx) < rank.get(ry))      parent.set(rx, ry);
+    else if (rank.get(rx) > rank.get(ry)) parent.set(ry, rx);
+    else { parent.set(ry, rx); rank.set(rx, rank.get(rx) + 1); }
   }
 
-  // Map handle IDs to terminal indices
-  // For components: "left" → t0, "right" → t1
-  // This ensures that wires connected to different physical handles
-  // always map to different terminals
   function handleToTerminalIndex(handleId) {
-    // Handle ID can be "left" or "right" for components
-    if (handleId === 'left') return 0;
-    if (handleId === 'right') return 1;
-    return 0; // fallback
-  }
-
-  // Get the terminal index for a component based on the edge's handle
-  function getTerminalIndexForEdge(edge, nodeId) {
-    const node = nodes.find(n => n.id === nodeId);
-    const nodeType = node?.data?.componentType;
-    
-    // Only use handle-based mapping for component nodes
-    if (nodeType && !['junction', 'ground'].includes(nodeType)) {
-      // Determine which handle this node uses in this edge
-      if (edge.source === nodeId && edge.sourceHandle) {
-        return handleToTerminalIndex(edge.sourceHandle);
-      }
-      if (edge.target === nodeId && edge.targetHandle) {
-        return handleToTerminalIndex(edge.targetHandle);
-      }
-    }
-    
-    // Fallback for junctions/ground or missing handle info
+    if (handleId === 'left')   return 0;  // left  handle → _t0 (positive/+)
+    if (handleId === 'right')  return 1;  // right handle → _t1 (negative/−)
+    if (handleId === 'top')    return 0;  // top   handle → _t0 (rotated 90°)
+    if (handleId === 'bottom') return 1;  // bottom handle → _t1 (rotated 90°)
     return 0;
   }
 
-  // Process edges to union terminals/junctions/grounds
+  // Build a lookup: for each component node, which handle connects to which
+  // neighbor?  { compNodeId → { handleId: neighborChainId } }
+  // We resolve through junctions so the union-find always sees an actual
+  // electrical neighbor, not just an intermediate junction node.
+  const compHandleMap = new Map(); // compId → Map<handleId, neighborId>
+
   edges.forEach(edge => {
-    const sourceNode = nodes.find(n => n.id === edge.source);
-    const targetNode = nodes.find(n => n.id === edge.target);
-    
-    const sourceType = sourceNode?.data?.componentType;
-    const targetType = targetNode?.data?.componentType;
-    
-    const sourceIsGround = sourceType === 'ground';
-    const targetIsGround = targetType === 'ground';
-    const sourceIsJunction = sourceType === 'junction';
-    const targetIsJunction = targetType === 'junction';
-    const sourceIsComponent = !['junction', 'ground'].includes(sourceType);
-    const targetIsComponent = !['junction', 'ground'].includes(targetType);
-    
-    if (sourceIsComponent && targetIsComponent) {
-      // Component to component: union terminals at this connection
-      const sourceTerminals = terminalNodes.get(edge.source);
-      const targetTerminals = terminalNodes.get(edge.target);
-      
-      const sourceTerminalIdx = getTerminalIndexForEdge(edge, edge.source);
-      const targetTerminalIdx = getTerminalIndexForEdge(edge, edge.target);
-      
-      union(sourceTerminals[sourceTerminalIdx], targetTerminals[targetTerminalIdx]);
-    } else if (sourceIsComponent && !targetIsGround) {
-      // Component to junction: union terminal with junction
-      const sourceTerminals = terminalNodes.get(edge.source);
-      const terminalIdx = getTerminalIndexForEdge(edge, edge.source);
-      
-      union(sourceTerminals[terminalIdx], edge.target);
-    } else if (targetIsComponent && !sourceIsGround) {
-      // Junction to component: union junction with terminal
-      const targetTerminals = terminalNodes.get(edge.target);
-      const terminalIdx = getTerminalIndexForEdge(edge, edge.target);
-      
-      union(edge.source, targetTerminals[terminalIdx]);
-    } else if (sourceIsComponent && targetIsGround) {
-      // Component to ground: union the appropriate terminal with ground
-      const sourceTerminals = terminalNodes.get(edge.source);
-      const terminalIdx = getTerminalIndexForEdge(edge, edge.source);
-      union(sourceTerminals[terminalIdx], edge.target);
-    } else if (targetIsComponent && sourceIsGround) {
-      // Ground to component: union ground with the appropriate terminal
-      const targetTerminals = terminalNodes.get(edge.target);
-      const terminalIdx = getTerminalIndexForEdge(edge, edge.target);
-      union(edge.source, targetTerminals[terminalIdx]);
-    } else if (!sourceIsGround && !targetIsGround) {
-      // Junction to junction: union them
-      union(edge.source, edge.target);
-    } else if (sourceIsGround || targetIsGround) {
-      // Ground to junction: union them
+    const srcType = nodes.find(n => n.id === edge.source)?.data?.componentType;
+    const tgtType = nodes.find(n => n.id === edge.target)?.data?.componentType;
+    const srcIsComp = srcType && !['junction', 'ground'].includes(srcType);
+    const tgtIsComp = tgtType && !['junction', 'ground'].includes(tgtType);
+
+    if (srcIsComp && edge.sourceHandle) {
+      if (!compHandleMap.has(edge.source)) compHandleMap.set(edge.source, new Map());
+      // Only store the first wire on this handle (duplicates already validated above)
+      if (!compHandleMap.get(edge.source).has(edge.sourceHandle)) {
+        compHandleMap.get(edge.source).set(edge.sourceHandle, edge.target);
+      }
+    }
+    if (tgtIsComp && edge.targetHandle) {
+      if (!compHandleMap.has(edge.target)) compHandleMap.set(edge.target, new Map());
+      if (!compHandleMap.get(edge.target).has(edge.targetHandle)) {
+        compHandleMap.get(edge.target).set(edge.targetHandle, edge.source);
+      }
+    }
+  });
+
+  function terminalIdx(edge, nodeId) {
+    const ntype = nodes.find(n => n.id === nodeId)?.data?.componentType;
+    if (ntype && !['junction', 'ground'].includes(ntype)) {
+      if (edge.source === nodeId && edge.sourceHandle)
+        return handleToTerminalIndex(edge.sourceHandle);
+      if (edge.target === nodeId && edge.targetHandle)
+        return handleToTerminalIndex(edge.targetHandle);
+    }
+    return 0;
+  }
+
+  // ── Union edges ───────────────────────────────────────────────────────────
+  // Rule: for each edge, determine which terminal (_t0 or _t1) of each
+  // component the edge touches, and union that terminal with the neighbor's
+  // electrical identity (junction id, ground id, or the neighbor's terminal).
+  edges.forEach(edge => {
+    const srcType = nodes.find(n => n.id === edge.source)?.data?.componentType;
+    const tgtType = nodes.find(n => n.id === edge.target)?.data?.componentType;
+
+    const srcIsGnd  = srcType === 'ground';
+    const tgtIsGnd  = tgtType === 'ground';
+    const srcIsComp = !['junction', 'ground'].includes(srcType) && !!srcType;
+    const tgtIsComp = !['junction', 'ground'].includes(tgtType) && !!tgtType;
+
+    const srcTerms = terminalNodes.get(edge.source);
+    const tgtTerms = terminalNodes.get(edge.target);
+
+    // Determine terminal index from the handle on the edge.
+    // If a handle ID is missing (e.g. older edge from auto-junction split),
+    // fall back to scanning compHandleMap for this component so we still get
+    // the right index rather than always defaulting to 0.
+    function safeTermIdx(compId, edgeHandleId) {
+      if (edgeHandleId) return handleToTerminalIndex(edgeHandleId);
+      // Fallback: look up which handle this edge's neighbor appears under
+      const hmap = compHandleMap.get(compId);
+      if (!hmap) return 0;
+      for (const [hid, nbr] of hmap) {
+        if (nbr === (compId === edge.source ? edge.target : edge.source))
+          return handleToTerminalIndex(hid);
+      }
+      return 0;
+    }
+
+    const srcIdx = srcIsComp ? safeTermIdx(edge.source, edge.sourceHandle) : 0;
+    const tgtIdx = tgtIsComp ? safeTermIdx(edge.target, edge.targetHandle) : 0;
+
+    if (srcIsComp && tgtIsComp) {
+      union(srcTerms[srcIdx], tgtTerms[tgtIdx]);
+    } else if (srcIsComp && !tgtIsGnd) {
+      union(srcTerms[srcIdx], edge.target);
+    } else if (tgtIsComp && !srcIsGnd) {
+      union(edge.source, tgtTerms[tgtIdx]);
+    } else if (srcIsComp && tgtIsGnd) {
+      union(srcTerms[srcIdx], edge.target);
+    } else if (tgtIsComp && srcIsGnd) {
+      union(edge.source, tgtTerms[tgtIdx]);
+    } else {
+      // junction↔junction, junction↔ground, ground↔junction
       union(edge.source, edge.target);
     }
   });
 
-  // Ground is only connected through explicit wires.
-  if (groundReference) {
-    const groundConnections = graph.get(groundReference.id) || [];
-    groundConnections.forEach(connId => {
-      if (connId !== groundReference.id) {
-        union(groundReference.id, connId);
-      }
-    });
-  }
+  // Ensure ground is fully propagated through junction chains
+  groundConns.forEach(cid => { if (cid !== groundReference.id) union(groundReference.id, cid); });
 
-  // Assign electrical node names.
-  // Only create a node entry for roots that are actually used by a component
-  // terminal — skip phantom roots that exist only because of internal union-find
-  // bookkeeping on junction/ground nodes that share a group with a terminal.
-  const electricalNodeMap = new Map();
-  let nodeCounter = 1;
-
-  // First pass: collect only the roots that component terminals actually belong to.
+  // ── Assign electrical node names ──────────────────────────────────────────
   const usedRoots = new Set();
-  componentNodes.forEach(compNode => {
-    const terminals = terminalNodes.get(compNode.id);
-    if (!terminals) return;
-    terminals.forEach(t => usedRoots.add(find(t)));
+  componentNodes.forEach(c => {
+    const terms = terminalNodes.get(c.id);
+    if (terms) terms.forEach(t => usedRoots.add(find(t)));
   });
-  // Also include the ground root so node '0' gets assigned.
   groundNodes.forEach(g => usedRoots.add(find(g.id)));
 
+  const electricalNodeMap = new Map();
+  let nodeCounter = 1;
   usedRoots.forEach(root => {
-    // Check if this group contains any ground node
     const hasGround = groundNodes.some(g => find(g.id) === root);
-    if (hasGround) {
-      electricalNodeMap.set(root, '0');
-    } else {
-      electricalNodeMap.set(root, `n${nodeCounter++}`);
-    }
+    electricalNodeMap.set(root, hasGround ? '0' : `n${nodeCounter++}`);
   });
 
-  // Build components
-  const components = [];
-  const allElectricalNodes = new Set();
+  // ── Build component list ──────────────────────────────────────────────────
+  const components     = [];
+  const meters         = []; // { id, type, spiceName, nodes: [n+, n-] }
+  const allElecNodes   = new Set();
 
   componentNodes.forEach(compNode => {
-    const componentType = compNode.data?.componentType;
-    const terminals = terminalNodes.get(compNode.id);
-    
-    let terminalElectricalNodes = terminals.map(t => {
-      const root = find(t);
-      return electricalNodeMap.get(root);
-    });
-
-    // Check for short
-    if (terminalElectricalNodes[0] === terminalElectricalNodes[1]) {
-      throw new Error(`${componentType}: Both terminals at same node (short circuit).`);
-    }
-
-    // IMPORTANT: For voltage/current sources, rotation affects polarity!
-    // At 0°:   left=positive(+),  right=negative(-)
-    // At 180°: left=negative(-),  right=positive(+)  
-    // We need to swap the nodes array to reflect the physical rotation
+    const ctype    = compNode.data?.componentType;
+    const terms    = terminalNodes.get(compNode.id);
     const rotation = compNode.data?.rotation || 0;
-    const isSource = componentType === 'dc_source' || componentType === 'current_source';
-    
-    if (isSource && (rotation === 180 || rotation === 270)) {
-      // Rotation of 180° or 270° flips the polarity
-      // Swap the terminal nodes so [0] is still positive in the netlist
-      terminalElectricalNodes = [terminalElectricalNodes[1], terminalElectricalNodes[0]];
-      console.log(`🔄 ${componentType} rotated ${rotation}° - terminals swapped for correct polarity`);
+
+    let elecNodes = terms.map(t => electricalNodeMap.get(find(t)));
+
+    if (elecNodes[0] === elecNodes[1]) {
+      throw new Error(`${compNode.data?.componentId ?? ctype}: Both terminals at same node (short circuit).`);
     }
 
-    terminalElectricalNodes.forEach(n => allElectricalNodes.add(n));
+    // ── Source polarity ───────────────────────────────────────────────────
+    // Convention throughout this codebase:
+    //   _t0  ←→  'left' handle  = positive (+) terminal
+    //   _t1  ←→  'right' handle = negative (−) terminal
+    //
+    // The SVG symbols are drawn left=+, right=−.
+    // After union-find, elecNodes[0] is the node the left/top handle touches
+    // and elecNodes[1] is the node the right/bottom handle touches.
+    //
+    // For voltage/current sources the SPICE line must be:
+    //   Vx  n+  n−  DC value   (positive first)
+    //
+    // We determine polarity by asking: which resolved electrical node is
+    // connected to ground ('0')?  That must be n− (index 1).
+    // If the ground-connected node ended up in index 0, swap.
+    //
+    // This is more robust than a rotation-angle heuristic because it doesn't
+    // depend on remembering which rotation flips the handle layout.
+    const isSource = ctype === 'dc_source' || ctype === 'current_source';
+    if (isSource) {
+      // elecNodes[0] should be n+ (not ground), elecNodes[1] should be n−.
+      // If elecNodes[0] === '0' (ground), the wiring is inverted → swap.
+      if (elecNodes[0] === '0') {
+        elecNodes = [elecNodes[1], elecNodes[0]];
+      }
+    }
 
-    // Use the componentId from node data if available, otherwise use the label
-    // This ensures unique IDs even when components have the same value
-    const componentId = compNode.data?.componentId || compNode.data?.label || compNode.id;
-    const cleanId = String(componentId).replace(/[^\x00-\x7F]/g, '').trim() || `comp${compNode.id.slice(-4)}`;
+    elecNodes.forEach(n => allElecNodes.add(n));
 
+    const rawId  = compNode.data?.componentId || compNode.data?.label || compNode.id;
+    const cleanId = String(rawId).replace(/[^\x00-\x7F]/g, '').trim()
+                  || `comp${compNode.id.slice(-4)}`;
+
+    // ── Meter metadata ────────────────────────────────────────────────────
+    if (ctype === 'ammeter') {
+      // SPICE sense voltage source: Vsense_<id> n+ n- DC 0
+      // ngspice will report I(Vsense_<id>) = the current flowing through it
+      const spiceName = `Vsense_${cleanId}`;
+      meters.push({ id: cleanId, type: 'ammeter', spiceName, nodes: elecNodes });
+      components.push({
+        id: cleanId, type: 'ammeter', value: 0,
+        nodes: elecNodes, spiceName,
+        position: compNode.position, rotation,
+      });
+      return;
+    }
+
+    if (ctype === 'voltmeter') {
+      // SPICE: R<id>_vm n+ n- 1G  (ideal = ∞ Ω, 1 GΩ is negligible loading)
+      const spiceName = `R${cleanId}_vm`;
+      meters.push({ id: cleanId, type: 'voltmeter', spiceName, nodes: elecNodes });
+      components.push({
+        id: cleanId, type: 'voltmeter', value: 1e9,
+        nodes: elecNodes, spiceName,
+        position: compNode.position, rotation,
+      });
+      return;
+    }
+
+    // Regular component
     components.push({
       id: cleanId,
-      type: componentType,
-      value: compNode.data?.value || getDefaultValue(componentType),
-      nodes: terminalElectricalNodes,
+      type: ctype,
+      value: compNode.data?.value || getDefaultValue(ctype),
+      nodes: elecNodes,
       position: compNode.position,
-      rotation: rotation, // Include rotation in component data
+      rotation,
     });
   });
 
-  // Validate
-  if (components.length === 0) {
-    throw new Error('Add at least one component.');
+  // ── Final validations ─────────────────────────────────────────────────────
+  const nonMeterComponents = components.filter(c => !meterTypes.includes(c.type));
+  if (nonMeterComponents.length === 0) {
+    throw new Error('Add at least one circuit component (resistor, source, etc.).');
   }
-
-  const hasVoltageOrCurrentSource = components.some(c => c.type === 'dc_source' || c.type === 'current_source');
-  if (!hasVoltageOrCurrentSource) {
+  const hasSource = nonMeterComponents.some(
+    c => c.type === 'dc_source' || c.type === 'current_source'
+  );
+  if (!hasSource) {
     throw new Error('Add a DC voltage source or current source.');
   }
-
-  if (groundNodes.length === 0) {
-    throw new Error('Add a Ground reference point.');
-  }
-
-  // Ensure node '0' exists (ground must be connected)
-  if (!allElectricalNodes.has('0')) {
-    throw new Error('Ground is not connected to the circuit! Wire ground to a component.');
+  if (!allElecNodes.has('0')) {
+    throw new Error('Ground is not connected to the circuit!');
   }
 
   const result = {
-    nodes: Array.from(allElectricalNodes),
-    components: components,
-    ground: '0'
+    nodes:      Array.from(allElecNodes),
+    components,
+    ground:     '0',
+    meters,     // consumed by backend for measurement extraction + frontend display
   };
 
   console.log('✅ Circuit converted:', result);
-  
   return result;
 }
 
 function getDefaultValue(type) {
   const defaults = {
-    'dc_source': 5.0,
-    'current_source': 0.012,
-    'resistor': 1000,
-    'capacitor': 1e-7,
-    'inductor': 1e-6,
+    dc_source:      5.0,
+    current_source: 0.012,
+    resistor:       1000,
+    capacitor:      1e-7,
+    inductor:       1e-6,
+    ammeter:        0,
+    voltmeter:      1e9,
   };
-  return defaults[type] || 0;
+  return defaults[type] ?? 0;
 }
