@@ -211,23 +211,14 @@ class StructuralFaultDetector:
         An ammeter must be in SERIES, meaning it is the ONLY conducting path
         between its two terminals.
 
-        Correct topology test
-        ─────────────────────
-        Remove the ammeter AND all components connected to ground from the
-        union-find, then ask: are the ammeter's two terminals still connected
-        through purely non-ground paths?
-
-        Simpler equivalent (used here):
-        Build a UF of all components EXCEPT:
-          • this ammeter
-          • any component that has ground ('0') as one of its nodes
-
-        If the ammeter's terminal nodes are still connected in that reduced
-        graph, there is a parallel path that does NOT go through ground — the
-        ammeter is genuinely in parallel with something.
-
-        If they are NOT connected (or only connected through ground), the
-        ammeter is in series — correct placement, no fault.
+        Detection logic
+        ───────────────
+        1. First check: if ANY other component shares exactly the same two nodes
+           as the ammeter, it's in parallel (simplest case).
+        
+        2. Second check: Build a UF excluding the ammeter and ground-touching
+           components. If the terminals are still connected, there's a parallel
+           non-ground path.
         """
         all_comps = circuit_data.get("components", [])
         ground    = circuit_data.get("ground", "0")
@@ -242,7 +233,29 @@ class StructuralFaultDetector:
                 continue
 
             n_plus, n_minus = nodes[0], nodes[1]
+            ammeter_node_set = set(nodes)
 
+            # ── Check 1: Direct parallel (same two nodes) ─────────────────────
+            # If any other component connects exactly the same two nodes, it's
+            # definitely in parallel, regardless of whether ground is involved.
+            parallel_comps = [
+                c.get("id", "?") for c in all_comps
+                if c is not ammeter
+                and c.get("type") != "voltmeter"  # voltmeters don't conduct DC
+                and len(c.get("nodes", [])) >= 2
+                and set(c.get("nodes", [])[:2]) == ammeter_node_set
+            ]
+            
+            if parallel_comps:
+                self.faults.append(
+                    f"Ammeter {aid} must be connected in series, not in parallel. "
+                    f"It shares the exact same connection points ({n_plus}, {n_minus}) "
+                    f"as {', '.join(parallel_comps)}. The ammeter is being bypassed. "
+                    f"Break the wire at one point and insert the ammeter in series."
+                )
+                continue  # Already found the fault, skip the UF check
+
+            # ── Check 2: Indirect parallel (through non-ground paths) ─────────
             # Build connectivity WITHOUT:
             #   1. This ammeter itself
             #   2. Any component that touches ground (they all share the ground
