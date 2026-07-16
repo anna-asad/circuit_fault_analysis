@@ -130,19 +130,23 @@ class StructuralFaultDetector:
         uf     = _build_uf_excluding(circuit_data, exclude_types=("voltmeter",))
         ground = circuit_data.get("ground", "0")
 
-        # Find ground's group
-        ground_group = None
-        for group in uf.get_components():
-            if ground in group:
-                ground_group = group
-                break
+        # Find the union-find root that represents the ground group.
+        # Use the root (not a set object) for comparison so the identity check
+        # is stable across multiple calls to get_components().
+        ground_root = uf.find(ground)
 
         for group in uf.get_components():
-            if group is ground_group:
+            # Skip the ground-connected group entirely.
+            if ground in group:
                 continue
-            if len(group) > 0:
+            if not group:
+                continue
+            # Also strip the ground node itself from the message just in case
+            # it leaked in via an edge-case (e.g. ground not yet initialised).
+            disconnected = sorted(n for n in group if n != ground)
+            if disconnected:
                 self.faults.append(
-                    f"Open circuit / broken wire: nodes {', '.join(sorted(group))} "
+                    f"Open circuit / broken wire: node(s) {', '.join(disconnected)} "
                     f"have no conducting path to ground."
                 )
 
@@ -273,20 +277,19 @@ class StructuralFaultDetector:
     def _check_voltmeter_placement(self, circuit_data: Dict):
         """
         A voltmeter must be in PARALLEL: its two terminals must already be
-        connected through the rest of the circuit WITHOUT going through ground.
+        connected through the rest of the circuit.
 
-        A voltmeter is in series when it is the only non-ground path between
-        its two terminals.  To detect this we build a UF excluding:
-          • this voltmeter
-          • all other voltmeters (they don't conduct DC)
-          • components that touch ground (same reason as ammeter check — they
-            form a common bus and would make every node pair look connected)
+        Build a UF of every component EXCEPT this voltmeter (and other
+        voltmeters, which don't conduct DC current).  Ground-connected
+        components are intentionally included — a voltmeter across a
+        component that has one terminal at ground (e.g. VM1 across R1 where
+        R1 connects to node 0) is perfectly valid, and excluding those
+        components would remove the very paths that prove connectivity.
 
-        If the terminals are NOT connected in that reduced graph, the voltmeter
-        is the only bridge between them → it is in series → fault.
+        If the two terminals are NOT connected in that graph, the voltmeter
+        is the sole bridge between them → it is in series → fault.
         """
         all_comps = circuit_data.get("components", [])
-        ground    = circuit_data.get("ground", "0")
 
         for vm in all_comps:
             if vm.get("type") != "voltmeter":
@@ -309,10 +312,6 @@ class StructuralFaultDetector:
                 if comp.get("type") == "voltmeter":
                     continue
                 comp_nodes = comp.get("nodes", [])
-                # Exclude ground-connected components to avoid the common-bus
-                # false-connection problem.
-                if ground in comp_nodes:
-                    continue
                 if len(comp_nodes) >= 2:
                     uf.union(comp_nodes[0], comp_nodes[1])
 

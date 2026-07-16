@@ -472,10 +472,22 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
     window.connectionHandled = false; // reset for this drag gesture
   }, []);
 
+  // ── onConnectEnd: auto-junction when a wire is dropped onto another wire ──
+  //
+  // This fires for ANY component drag that ends over empty canvas or a wire
+  // (i.e. NOT over a handle — those go through onConnect instead).
+  //
+  // Behaviour:
+  //   1. Find the nearest existing wire to the drop point (generous threshold).
+  //   2. Insert an auto-junction at the nearest point on that wire.
+  //   3. Split the original wire into two segments through the junction.
+  //   4. Connect the dragged component's handle to the junction.
+  //
+  // This works for every component type: ground, voltmeter, ammeter, resistor,
+  // capacitor, inductor, dc_source, current_source.
   const onConnectEnd = useCallback(
     (event) => {
-      // If onConnect already fired (handle-to-handle connection), skip the
-      // wire-splitting auto-junction logic entirely.
+      // onConnect already handled a proper handle→handle connection — skip.
       if (window.connectionHandled) {
         window.connectionStart   = null;
         window.connectionHandled = false;
@@ -485,45 +497,39 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
       const instance = reactFlowRef.current;
       if (!instance || !window.connectionStart) return;
 
-      const { nodeId: startNodeId } = window.connectionStart;
+      const { nodeId: startNodeId, handleId: startHandleId } = window.connectionStart;
       const startNode = nodes.find(n => n.id === startNodeId);
-
-      // Only handle this for ground nodes that were NOT connected to a handle
-      // (ReactFlow fires onConnect for handle-to-handle; onConnectEnd fires for
-      //  drops onto empty canvas / wires — we only want the latter.)
-      if (startNode?.data?.componentType !== 'ground') {
-        window.connectionStart = null;
-        return;
-      }
+      if (!startNode) { window.connectionStart = null; return; }
 
       const { clientX, clientY } = event;
       const position = instance.screenToFlowPosition({ x: clientX, y: clientY });
 
-      // ── Compute accurate handle positions using ReactFlow's internal node
-      // dimensions (populated after first render) ───────────────────────────
+      // ── Compute the pixel position of a node's handle ─────────────────────
       const getHandlePos = (node, handleId) => {
-        // Use internals if available (ReactFlow ≥ 11 populates positionAbsolute + width/height)
-        const nx = (node.positionAbsolute?.x ?? node.position.x);
-        const ny = (node.positionAbsolute?.y ?? node.position.y);
+        const nx = node.positionAbsolute?.x ?? node.position.x;
+        const ny = node.positionAbsolute?.y ?? node.position.y;
         const w  = node.width  ?? (node.data?.componentType === 'junction' ? 8 : 80);
         const h  = node.height ?? (node.data?.componentType === 'ground'   ? 60 : 50);
-
         switch (handleId) {
-          case 'left':   return { x: nx,         y: ny + h / 2 };
-          case 'right':  return { x: nx + w,      y: ny + h / 2 };
-          case 'top':    return { x: nx + w / 2,  y: ny         };
-          case 'bottom': return { x: nx + w / 2,  y: ny + h     };
-          default:       return { x: nx + w / 2,  y: ny + h / 2 };
+          case 'left':   return { x: nx,        y: ny + h / 2 };
+          case 'right':  return { x: nx + w,     y: ny + h / 2 };
+          case 'top':    return { x: nx + w / 2, y: ny         };
+          case 'bottom': return { x: nx + w / 2, y: ny + h     };
+          default:       return { x: nx + w / 2, y: ny + h / 2 };
         }
       };
 
-      // Find the nearest wire (edge) to the drop point
-      const threshold = 60;
-      let nearestEdge = null;
-      let minDistance = Infinity;
+      // ── Find the nearest wire to the drop point ───────────────────────────
+      // Threshold is generous (80 px) so users don't have to click precisely.
+      const THRESHOLD = 80;
+      let nearestEdge  = null;
+      let minDistance  = Infinity;
       let nearestPoint = null;
 
       edges.forEach(edge => {
+        // Don't try to split an edge that belongs to the node being connected
+        if (edge.source === startNodeId || edge.target === startNodeId) return;
+
         const srcNode = nodes.find(n => n.id === edge.source);
         const tgtNode = nodes.find(n => n.id === edge.target);
         if (!srcNode || !tgtNode) return;
@@ -531,83 +537,93 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
         const srcPos = getHandlePos(srcNode, edge.sourceHandle);
         const tgtPos = getHandlePos(tgtNode, edge.targetHandle);
 
-        // Closest point on segment
         const dx = tgtPos.x - srcPos.x;
         const dy = tgtPos.y - srcPos.y;
         const lenSq = dx * dx + dy * dy;
-        let t = lenSq > 0 ? ((position.x - srcPos.x) * dx + (position.y - srcPos.y) * dy) / lenSq : 0;
+        let t = lenSq > 0
+          ? ((position.x - srcPos.x) * dx + (position.y - srcPos.y) * dy) / lenSq
+          : 0;
         t = Math.max(0, Math.min(1, t));
         const cx = srcPos.x + t * dx;
         const cy = srcPos.y + t * dy;
         const dist = Math.hypot(position.x - cx, position.y - cy);
 
-        if (dist < threshold && dist < minDistance) {
-          minDistance = dist;
-          nearestEdge = edge;
+        if (dist < THRESHOLD && dist < minDistance) {
+          minDistance  = dist;
+          nearestEdge  = edge;
           nearestPoint = { x: cx, y: cy };
         }
       });
 
-      if (nearestEdge) {
-        // Snap junction to grid (20px)
-        const snap = 20;
-        const snappedX = Math.round(nearestPoint.x / snap) * snap;
-        const snappedY = Math.round(nearestPoint.y / snap) * snap;
-
-        const junctionId = `junction_auto_${Date.now()}`;
-        const WIRE_STYLE = { stroke: '#1a1a1a', strokeWidth: 2 };
-
-        setNodes((nds) => [
-          ...nds,
-          {
-            id: junctionId,
-            type: 'junctionNode',
-            position: { x: snappedX - 4, y: snappedY - 4 },
-            data: { label: '●', componentType: 'junction', componentId: junctionId },
-            style: NODE_STYLES.junction,
-          },
-        ]);
-
-        setEdges((eds) => {
-          const filtered = eds.filter(e => e.id !== nearestEdge.id);
-          return [
-            ...filtered,
-            // wire: original source → junction  (keep original sourceHandle)
-            {
-              id: `e_${nearestEdge.source}_${junctionId}`,
-              source: nearestEdge.source,
-              sourceHandle: nearestEdge.sourceHandle,
-              target: junctionId,
-              targetHandle: 'left',   // junctions accept any handle; use left
-              type: 'smoothstep',
-              style: WIRE_STYLE,
-              pathOptions: { borderRadius: 0 },
-            },
-            // wire: junction → original target  (keep original targetHandle)
-            {
-              id: `e_${junctionId}_${nearestEdge.target}`,
-              source: junctionId,
-              sourceHandle: 'right',  // symmetrical exit
-              target: nearestEdge.target,
-              targetHandle: nearestEdge.targetHandle,
-              type: 'smoothstep',
-              style: WIRE_STYLE,
-              pathOptions: { borderRadius: 0 },
-            },
-            // wire: ground → junction
-            {
-              id: `e_${startNodeId}_${junctionId}`,
-              source: startNodeId,
-              sourceHandle: 'top',
-              target: junctionId,
-              targetHandle: 'bottom',
-              type: 'smoothstep',
-              style: WIRE_STYLE,
-              pathOptions: { borderRadius: 0 },
-            },
-          ];
-        });
+      if (!nearestEdge) {
+        window.connectionStart   = null;
+        window.connectionHandled = false;
+        return;
       }
+
+      // ── Snap junction to grid ─────────────────────────────────────────────
+      const SNAP = 10;
+      const jx = Math.round(nearestPoint.x / SNAP) * SNAP;
+      const jy = Math.round(nearestPoint.y / SNAP) * SNAP;
+
+      const junctionId = `junction_auto_${Date.now()}`;
+      const WIRE_STYLE = { stroke: '#1a1a1a', strokeWidth: 2 };
+      const WIRE_OPTS  = { pathOptions: { borderRadius: 0 } };
+
+      // Determine which handle on the connecting component faces the junction.
+      // startHandleId is the handle that was being dragged from.
+      const connectingHandle = startHandleId ?? 'left';
+
+      setNodes(nds => [
+        ...nds,
+        {
+          id:   junctionId,
+          type: 'junctionNode',
+          position: { x: jx - 5, y: jy - 5 },
+          data: { label: '●', componentType: 'junction', componentId: junctionId },
+          style: NODE_STYLES.junction,
+        },
+      ]);
+
+      setEdges(eds => {
+        const filtered = eds.filter(e => e.id !== nearestEdge.id);
+        return [
+          ...filtered,
+          // Segment 1: original source → junction
+          {
+            id:           `e_${nearestEdge.source}_${junctionId}_${Date.now()}`,
+            source:       nearestEdge.source,
+            sourceHandle: nearestEdge.sourceHandle,
+            target:       junctionId,
+            targetHandle: 'left',
+            type:         'smoothstep',
+            style:        WIRE_STYLE,
+            ...WIRE_OPTS,
+          },
+          // Segment 2: junction → original target
+          {
+            id:           `e_${junctionId}_${nearestEdge.target}_${Date.now()}`,
+            source:       junctionId,
+            sourceHandle: 'right',
+            target:       nearestEdge.target,
+            targetHandle: nearestEdge.targetHandle,
+            type:         'smoothstep',
+            style:        WIRE_STYLE,
+            ...WIRE_OPTS,
+          },
+          // New wire: connecting component → junction
+          {
+            id:           `e_${startNodeId}_${junctionId}_${Date.now()}`,
+            source:       startNodeId,
+            sourceHandle: connectingHandle,
+            target:       junctionId,
+            targetHandle: 'bottom',
+            type:         'smoothstep',
+            style:        WIRE_STYLE,
+            ...WIRE_OPTS,
+          },
+        ];
+      });
 
       window.connectionStart   = null;
       window.connectionHandled = false;
@@ -758,8 +774,8 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
       {showInstructions && !isReadOnly && (
         <div className="canvas-instructions">
           💡 <strong>Quick start:</strong>{' '}
-          Wire components together |
-          Connect <strong>Ground (⏚)</strong> directly to any wire (auto-creates junction) |
+          Draw wires between component pins |
+          Drop a wire <strong>onto any existing wire</strong> to auto-junction |
           <kbd>Del</kbd> to delete | <kbd>Ctrl+R</kbd> to rotate
         </div>
       )}

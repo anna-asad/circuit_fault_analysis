@@ -34,17 +34,20 @@ function SimulateButton({ circuit, onSimulate, isSimulating, setIsSimulating }) 
       
       const circuitData = convertCircuitToBackendFormat(nodes, edges);
 
+      // Keep a clean copy of meter metadata. The backend may strip or corrupt
+      // the nodes/spiceName fields during Pydantic serialisation, so we always
+      // inject the original frontend meters directly into the response rather
+      // than relying on the backend to echo them back intact.
+      const frontendMeters = circuitData.meters ?? [];
+
       console.log('✅ Sending to backend:', circuitData);
 
-      // meters is frontend-only metadata — attach it so the backend echoes it
-      // back inside simulation_data for the ResultsPanel to consume.
       const response = await axios.post(`${API_URL}/api/simulate`, circuitData);
 
-      // Inject meters into the response so ResultsPanel can display readings
-      // even if the backend doesn't echo them (graceful fallback).
-      if (response.data?.simulation_data && circuitData.meters?.length) {
-        response.data.simulation_data.meters =
-          response.data.simulation_data.meters ?? circuitData.meters;
+      // Always overwrite simulation_data.meters with the frontend-authoritative
+      // copy. This guarantees nodes + spiceName are present for ResultsPanel.
+      if (response.data?.simulation_data) {
+        response.data.simulation_data.meters = frontendMeters;
       }
       
       console.log('🎉 Simulation Results:', {
