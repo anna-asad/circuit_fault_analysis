@@ -197,16 +197,37 @@ function NodeTerminals({ rotation = 0 }) {
 // ── ComponentNode ─────────────────────────────────────────────────────────────
 function ComponentNode({ id, data, mode }) {
   const rotation = data.rotation ?? 0;
+  // Swap width/height when rotated 90°/270° so ReactFlow's resize observer fires
+  const isVertical = rotation === 90 || rotation === 270;
+  
+  // Compute the outer box style with swapped dimensions
+  const nodeStyle = {
+    ...data.style,
+    width: isVertical ? (data.style?.minHeight || '52px') : (data.style?.minWidth || '80px'),
+    height: isVertical ? (data.style?.minWidth || '80px') : (data.style?.minHeight || '52px'),
+    minWidth: undefined,  // clear minWidth/minHeight to use explicit width/height
+    minHeight: undefined,
+  };
+
+  // Visual container also swaps dimensions to properly contain rotated SVG
+  const visualContainerStyle = {
+    transform: `rotate(${rotation}deg)`,
+    transformOrigin: 'center center',
+    transition: 'transform 0.15s ease',
+    width: isVertical ? '32px' : '100%',
+    height: isVertical ? '100%' : '32px',
+  };
+
+  // Apply compact styling for vertical orientation
+  const valueButtonStyle = isVertical ? { fontSize: '9px', maxWidth: '100%' } : {};
+  const labelStyle = isVertical ? { fontSize: '9px', maxWidth: '100%' } : {};
 
   if (mode === 'results') {
     return (
-      <div className="circuit-node circuit-node-component" style={data.style}>
+      <div className="circuit-node circuit-node-component" style={nodeStyle}>
         <NodeTerminals rotation={rotation} />
         <div className="circuit-node-content component-content">
-          <div
-            className="component-visual-container"
-            style={{ transform: `rotate(${rotation}deg)`, transformOrigin: 'center center' }}
-          >
+          <div className="component-visual-container" style={visualContainerStyle}>
             <div className="component-svg-fallback visible">
               {COMPONENT_SVGS[data.componentType]}
             </div>
@@ -219,20 +240,13 @@ function ComponentNode({ id, data, mode }) {
   const { isEditing, valueDraft, valueError, componentType, value, label } = data;
 
   return (
-    <div className="circuit-node circuit-node-component" style={data.style}>
+    <div className="circuit-node circuit-node-component" style={nodeStyle}>
       <NodeTerminals rotation={rotation} />
       <div className="circuit-node-content component-content">
-        {/* Component reference label (R1, C2, V1 …) — outside the rotating box */}
-        <div className="component-ref-label">{label}</div>
-        {/* SVG symbol rotates independently; node bounding box stays fixed */}
-        <div
-          className="component-visual-container"
-          style={{
-            transform: `rotate(${rotation}deg)`,
-            transformOrigin: 'center center',
-            transition: 'transform 0.15s ease',
-          }}
-        >
+        {/* Component reference label (R1, C2, V1 …) — stacking context ensures visibility */}
+        <div className="component-ref-label" style={labelStyle}>{label}</div>
+        {/* SVG symbol rotates; container becomes portrait box at 90°/270° */}
+        <div className="component-visual-container" style={visualContainerStyle}>
           <div className="component-svg-fallback visible">
             {COMPONENT_SVGS[componentType]}
           </div>
@@ -249,6 +263,7 @@ function ComponentNode({ id, data, mode }) {
           <button
             type="button"
             className="value-button"
+            style={valueButtonStyle}
             onClick={(e) => {
               e.stopPropagation();
               data.onEditValue?.(id);
@@ -609,19 +624,16 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
       if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
         event.preventDefault();
 
-        // Handle IDs on ComponentNode are ALWAYS "left" and "right" — they never
-        // change. Only the Handle's `position` prop changes (via ROTATION_TO_POSITIONS)
-        // so that the handle physically moves to a different edge of the node box.
-        // Edges reference handles by ID, so we must NOT remap IDs here.
-        // Just update the rotation value in node data; NodeTerminals re-renders
-        // the handles at the correct position automatically.
         setNodes((nds) =>
           nds.map((n) => {
             if (!n.selected) return n;
             const ctype = n.data?.componentType;
             if (!ctype || ctype === 'junction' || ctype === 'ground') return n;
-            const nextRot = ((n.data?.rotation ?? 0) + 90) % 360;
-            return { ...n, data: { ...n.data, rotation: nextRot } };
+            
+            const oldRot = n.data?.rotation ?? 0;
+            const newRot = (oldRot + 90) % 360;
+            
+            return { ...n, data: { ...n.data, rotation: newRot } };
           })
         );
 

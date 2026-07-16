@@ -89,6 +89,7 @@
   gap: 2px;
   width: 100%;
   padding: 4px 6px;
+  box-sizing: border-box;
 }
 
 /* ── Component reference label (R1, V1, etc.) ────────────────────────────── */
@@ -102,6 +103,10 @@
   letter-spacing: 0.03em;
   pointer-events: none;
   user-select: none;
+  position: relative;
+  z-index: 10;  /* Stacking context ensures label stays on top */
+  word-wrap: break-word;
+  word-break: break-word;
 }
 
 /* ── SVG symbol container ────────────────────────────────────────────────── */
@@ -112,6 +117,8 @@
   width: 100%;
   min-height: 32px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 1;  /* Below label/value elements */
 }
 
 .component-svg {
@@ -147,6 +154,11 @@
   text-decoration: none;
   pointer-events: auto;
   line-height: 1.2;
+  position: relative;
+  z-index: 10;  /* Stacking context ensures value button stays on top */
+  word-wrap: break-word;
+  word-break: break-word;
+  text-align: center;
 }
 
 .value-button:hover {
@@ -232,19 +244,24 @@
   align-items: center;
   pointer-events: auto;
   padding: 2px;
+  position: relative;
+  z-index: 10;  /* Stacking context ensures editor stays on top */
 }
 
 .value-editor-input {
-  width: 70px;
+  width: 100%;
+  max-width: 70px;
+  min-width: 45px;
   padding: 3px 6px;
   border: 1px solid #666;
   border-radius: 3px;
-  font-size: 11px;
+  font-size: 10px;
   font-family: monospace;
   background: #fffff0;
   color: #1a1a1a;
   outline: none;
   text-align: center;
+  box-sizing: border-box;
 }
 
 .value-editor-input:focus {
@@ -261,16 +278,34 @@
   padding: 2px 7px;
   border: 1px solid #888;
   border-radius: 3px;
-  background: #e8e8e0;
   cursor: pointer;
   font-size: 11px;
   font-family: monospace;
-  color: #1a1a1a;
-  transition: background 0.1s;
+  transition: background 0.1s, border-color 0.1s;
 }
 
-.value-editor-btn:hover {
-  background: #d0d0c8;
+.value-editor-btn:first-child {
+  /* Tick/Save button - green */
+  background: #22c55e;
+  border-color: #16a34a;
+  color: white;
+}
+
+.value-editor-btn:first-child:hover {
+  background: #16a34a;
+  border-color: #15803d;
+}
+
+.value-editor-btn:last-child {
+  /* Cross/Cancel button - red */
+  background: #ef4444;
+  border-color: #dc2626;
+  color: white;
+}
+
+.value-editor-btn:last-child:hover {
+  background: #dc2626;
+  border-color: #b91c1c;
 }
 
 .value-editor-error {
