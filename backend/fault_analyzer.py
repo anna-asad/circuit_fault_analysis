@@ -12,6 +12,8 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
+from topology_matcher import map_to_nominal_values
+
 # ── Locate model artefacts ────────────────────────────────────────────────────
 MODEL_DIR = Path(__file__).parent.parent / "models"
 REQUIRED_FILES = {
@@ -42,6 +44,7 @@ def _extract_features(
     node_voltages:    Dict[str, float],
     branch_currents:  Dict[str, float],
     nominal_lookup:   Dict,
+    circuit_data:     Dict = None,
 ) -> Dict[str, float]:
     """
     Compute the 17 features the RandomForest was trained on.
@@ -77,14 +80,37 @@ def _extract_features(
         if not (comp.upper().startswith('V') or comp.upper().startswith('I'))
     )
 
-    # Deviation-from-nominal features
-    key     = frozenset(component_values.keys())
-    nominal = nominal_lookup.get(key, {})
+    # Deviation-from-nominal features using topology-based matching
+    nominal, debug_msg = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # DEBUG LOGGING: Print component comparison before prediction
+    # ═══════════════════════════════════════════════════════════════════════════
+    print("\n" + "="*80)
+    print("🔍 FAULT CLASSIFIER DEBUG — Component Analysis")
+    print("="*80)
+    print(f"🔍 Topology Matching Result:")
+    for line in debug_msg.split('\n'):
+        print(f"   {line}")
+    print("\n📊 Per-Component Comparison:")
+    print("-" * 80)
+    
     deviations = []
     for name, val in component_values.items():
         nom = nominal.get(name)
         if nom and nom != 0:
-            deviations.append(abs(val - nom) / abs(nom))
+            deviation = abs(val - nom) / abs(nom)
+            deviations.append(deviation)
+            ratio_str = f"{deviation:.2%}"
+            current_str = branch_currents.get(name.upper(), "N/A")
+            print(f"  {name:8s} | Actual: {val:12.6g} | Nominal: {nom:12.6g} | "
+                  f"Deviation: {ratio_str:8s} | Current: {current_str}")
+        else:
+            current_str = branch_currents.get(name.upper(), "N/A")
+            print(f"  {name:8s} | Actual: {val:12.6g} | Nominal: {'NONE':>12s} | "
+                  f"Deviation: {'N/A':8s} | Current: {current_str}")
+    
+    print("-" * 80)
 
     devs_sorted = sorted(deviations, reverse=True)
     max_dev    = devs_sorted[0] if devs_sorted else 0.0
@@ -92,7 +118,7 @@ def _extract_features(
     dev_ratio  = (second_dev / max_dev) if max_dev > 0 else 0.0
     n_dev_over_20pct = sum(d > 0.20 for d in deviations)
 
-    return {
+    features = {
         "n_components":                      len(comps),
         "comp_mean":                         float(np.mean(comps))        if comps  else 0.0,
         "comp_max":                          float(np.max(comps))         if comps  else 0.0,
@@ -112,6 +138,31 @@ def _extract_features(
         "deviation_ratio_2nd_over_1st":      dev_ratio,
         "n_components_deviated_over_20pct":  float(n_dev_over_20pct),
     }
+    
+    print(f"\n🎯 Computed Deviation Features:")
+    print(f"   max_deviation_ratio:              {max_dev:.4f} ({max_dev*100:.2f}%)")
+    print(f"   second_deviation_ratio:           {second_dev:.4f} ({second_dev*100:.2f}%)")
+    print(f"   deviation_ratio_2nd_over_1st:     {dev_ratio:.4f}")
+    print(f"   n_components_deviated_over_20pct: {n_dev_over_20pct}")
+    print(f"   n_missing_currents:               {n_passive - len(currs)}")
+    
+    print(f"\n⚠️  BROKEN Component Statistics (NOT sent to model):")
+    print(f"   comp_mean: {features['comp_mean']:.6f}  ← Mixes units (Ω, V, A)")
+    print(f"   comp_max:  {features['comp_max']:.6f}  ← Max of what?")
+    print(f"   comp_min:  {features['comp_min']:.6f}  ← Min of what?")
+    print(f"   comp_std:  {features['comp_std']:.6f}  ← Meaningless variance")
+    
+    # Create cleaned features dict WITHOUT the broken comp_* statistics
+    # These will be excluded from the model input
+    features_for_model = {k: v for k, v in features.items() 
+                          if k not in ['comp_mean', 'comp_max', 'comp_min', 'comp_std']}
+    
+    print(f"\n📦 Features Being Sent to Model (broken ones excluded):")
+    for key, val in features_for_model.items():
+        print(f"   {key:40s} = {val:12.6f}")
+    print("="*80 + "\n")
+    
+    return features_for_model
 
 
 # ── FaultAnalyzer class ───────────────────────────────────────────────────────
@@ -169,6 +220,7 @@ class FaultAnalyzer:
                 signal_voltages,
                 branch_currents,
                 self._nominal_lookup,
+                circuit_data,  # Pass full circuit data for connectivity analysis
             )
             return self._predict(features, component_values)
 
@@ -213,6 +265,18 @@ class FaultAnalyzer:
         """Run the RandomForest and format a response."""
         X = pd.DataFrame([features]).reindex(columns=self._feature_cols, fill_value=0)
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # DEBUG: Print the complete feature vector being sent to the model
+        # ═══════════════════════════════════════════════════════════════════════
+        print("\n" + "="*80)
+        print("🤖 MODEL PREDICTION DEBUG — Feature Vector")
+        print("="*80)
+        print("📊 Complete feature vector being sent to classifier:")
+        for col in self._feature_cols:
+            val = X[col].iloc[0]
+            print(f"   {col:40s} = {val:12.6f}")
+        print("="*80)
+
         # Per-label probabilities
         proba_per_label = self._clf.predict_proba(X)
         label_probs: Dict[str, float] = {}
@@ -221,6 +285,16 @@ class FaultAnalyzer:
             classes = list(self._clf.classes_[i]) if hasattr(self._clf, "estimators_") else [0, 1]
             p_yes   = arr[classes.index(1)] if 1 in classes else 0.0
             label_probs[label] = float(p_yes)
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # DEBUG: Print probability for each fault type
+        # ═══════════════════════════════════════════════════════════════════════
+        print("\n🎯 Model Probabilities (threshold = {:.2f}):".format(THRESHOLD))
+        print("-" * 80)
+        for label, prob in sorted(label_probs.items(), key=lambda x: -x[1]):
+            fired = "🔥 FIRED" if prob >= THRESHOLD else ""
+            print(f"   {label:30s} {prob:6.2%}  {fired}")
+        print("="*80 + "\n")
 
         # Fired labels (above threshold)
         fired = [lbl for lbl, p in label_probs.items() if p >= THRESHOLD]
@@ -238,6 +312,9 @@ class FaultAnalyzer:
             predicted  = "Multiple_Faults (" + " + ".join(fired) + ")"
             confidence = float(np.mean([label_probs[f] for f in fired]))
             fault_type = "Multiple_Faults"
+
+        print(f"📋 Final Prediction: {predicted} (confidence: {confidence:.2%})")
+        print("="*80 + "\n")
 
         return {
             "predicted_fault":   predicted,

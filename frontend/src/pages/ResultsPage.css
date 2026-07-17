@@ -245,6 +245,24 @@
   font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
 }
 
+.data-row-value-error {
+  color: #dc2626;
+  font-style: italic;
+}
+
+/* Meter-specific styling */
+.data-row.meter-row-ammeter .data-row-label::before {
+  content: 'Ⓐ ';
+  color: #f59e0b;
+  font-weight: bold;
+}
+
+.data-row.meter-row-voltmeter .data-row-label::before {
+  content: 'Ⓥ ';
+  color: #3b82f6;
+  font-weight: bold;
+}
+
 /* Right column: Circuit canvas */
 .results-canvas-container {
   background: #ffffff;

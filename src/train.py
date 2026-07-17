@@ -1,4 +1,3 @@
-
 import json
 import numpy as np
 import pandas as pd
@@ -31,7 +30,6 @@ def build_nominal_lookup(df):
 
 def extract_features(row, nominal_lookup):
     comps_dict = json.loads(row["component_values"])
-    comps = list(comps_dict.values())
     volts = list(json.loads(row["node_voltages"]).values())
     currs = list(json.loads(row["branch_currents"]).values())
 
@@ -58,12 +56,17 @@ def extract_features(row, nominal_lookup):
         if not (name.upper().startswith('V') or name.upper().startswith('I'))
     )
 
+    # NOTE: comp_mean / comp_max / comp_min / comp_std were removed.
+    # They used to be computed as raw statistics across component_values,
+    # which mixes incompatible units (ohms, amps, volts, farads, henries)
+    # into a single meaningless number (e.g. averaging a 0.012A current
+    # source with a 415ohm resistor). This gave the classifier a noisy,
+    # unit-inconsistent signal that could dominate over the properly
+    # normalized deviation features below. Removed entirely rather than
+    # "fixed by unit" to keep the feature set simple and avoid
+    # reintroducing the same bug in a different shape.
     return pd.Series({
-        "n_components": len(comps),
-        "comp_mean": np.mean(comps) if comps else 0,
-        "comp_max": np.max(comps) if comps else 0,
-        "comp_min": np.min(comps) if comps else 0,
-        "comp_std": np.std(comps) if comps else 0,
+        "n_components": len(comps_dict),
         "n_nodes": len(volts),
         "volt_mean": np.mean(volts) if volts else 0,
         "volt_max": np.max(volts) if volts else 0,
@@ -124,6 +127,7 @@ def main():
     feature_columns = list(X.columns)
 
     print(f"Loaded {len(X)} samples")
+    print(f"Feature columns ({len(feature_columns)}): {feature_columns}\n")
     print("Original fault_type counts (for reference only, not what we train on):")
     print(fault_type_col.value_counts(), "\n")
     print("How often each of the 4 labels is 'yes':")
