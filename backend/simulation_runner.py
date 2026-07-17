@@ -56,12 +56,13 @@ class SimulationRunner:
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False, None
     
-    def run_simulation(self, netlist: str) -> Dict:
+    def run_simulation(self, netlist: str, circuit_data: Dict = None) -> Dict:
         """
         Run ngspice simulation with given netlist.
         
         Args:
             netlist: SPICE netlist string
+            circuit_data: Optional circuit definition to extract current source values
             
         Returns:
             Dictionary with simulation results:
@@ -93,6 +94,24 @@ class SimulationRunner:
             # Parse output
             if result.returncode == 0:
                 voltages, currents = self._parse_output(result.stdout)
+                
+                # Ensure ground (node 0) is always present with value 0
+                if '0' not in voltages:
+                    voltages['0'] = 0.0
+                    print(f"  ℹ️ Added ground node: V(0) = 0.0")
+                
+                # ngspice doesn't output i(I_source) for current sources in DC analysis.
+                # Add current source values from circuit definition directly.
+                if circuit_data:
+                    for comp in circuit_data.get("components", []):
+                        if comp.get("type") == "current_source":
+                            comp_id = comp.get("id", "").upper()
+                            comp_value = comp.get("value", 0)
+                            # Only add if not already parsed (shouldn't be, but check anyway)
+                            if comp_id not in currents:
+                                currents[comp_id] = comp_value
+                                print(f"  ℹ️ Added current source: I({comp_id}) = {comp_value} (from circuit def)")
+                
                 return {
                     "success": True,
                     "voltages": voltages,

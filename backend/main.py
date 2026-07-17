@@ -258,7 +258,7 @@ async def simulate_circuit(circuit: CircuitModel):
         
         # Step 3: Run ngspice simulation
         runner = SimulationRunner()
-        sim_result = runner.run_simulation(netlist)
+        sim_result = runner.run_simulation(netlist, circuit_data=circuit_dict)
         
         if not sim_result["success"]:
             return SimulationResponse(

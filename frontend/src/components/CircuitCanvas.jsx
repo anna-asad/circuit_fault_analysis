@@ -681,41 +681,67 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       let componentId;
       let prefix;
       
+      // Helper to ensure ID is unique (in case of stale counter)
+      const existingIds = new Set(nodes.map(n => n.data?.componentId).filter(Boolean));
+      const getUniqueId = (basePrefix, counter) => {
+        let num = counter;
+        let candidate = `${basePrefix}${num}`;
+        while (existingIds.has(candidate)) {
+          num++;
+          candidate = `${basePrefix}${num}`;
+        }
+        return { id: candidate, finalNum: num };
+      };
+      
       if (type === 'dc_source') {
         prefix = 'V';
         const nextNum = (componentCounters?.dc_source ?? 0) + 1;
-        componentId = `${prefix}${nextNum}`;
-        setComponentCounters?.((prev) => ({ ...prev, dc_source: nextNum }));
+        const { id, finalNum } = getUniqueId(prefix, nextNum);
+        componentId = id;
+        console.log(`🔢 Creating dc_source: counter was ${componentCounters?.dc_source}, now ${finalNum}, ID: ${componentId}`);
+        setComponentCounters?.((prev) => ({ ...prev, dc_source: finalNum }));
       } else if (type === 'current_source') {
         prefix = 'I';
         const nextNum = (componentCounters?.current_source ?? 0) + 1;
-        componentId = `${prefix}${nextNum}`;
-        setComponentCounters?.((prev) => ({ ...prev, current_source: nextNum }));
+        const { id, finalNum } = getUniqueId(prefix, nextNum);
+        componentId = id;
+        console.log(`🔢 Creating current_source: counter was ${componentCounters?.current_source}, now ${finalNum}, ID: ${componentId}`);
+        setComponentCounters?.((prev) => ({ ...prev, current_source: finalNum }));
       } else if (type === 'resistor') {
         prefix = 'R';
         const nextNum = (componentCounters?.resistor ?? 0) + 1;
-        componentId = `${prefix}${nextNum}`;
-        setComponentCounters?.((prev) => ({ ...prev, resistor: nextNum }));
+        const { id, finalNum } = getUniqueId(prefix, nextNum);
+        componentId = id;
+        console.log(`🔢 Creating resistor: counter was ${componentCounters?.resistor}, now ${finalNum}, ID: ${componentId}`);
+        setComponentCounters?.((prev) => ({ ...prev, resistor: finalNum }));
       } else if (type === 'capacitor') {
         prefix = 'C';
         const nextNum = (componentCounters?.capacitor ?? 0) + 1;
-        componentId = `${prefix}${nextNum}`;
-        setComponentCounters?.((prev) => ({ ...prev, capacitor: nextNum }));
+        const { id, finalNum } = getUniqueId(prefix, nextNum);
+        componentId = id;
+        console.log(`🔢 Creating capacitor: counter was ${componentCounters?.capacitor}, now ${finalNum}, ID: ${componentId}`);
+        setComponentCounters?.((prev) => ({ ...prev, capacitor: finalNum }));
       } else if (type === 'inductor') {
         prefix = 'L';
         const nextNum = (componentCounters?.inductor ?? 0) + 1;
-        componentId = `${prefix}${nextNum}`;
-        setComponentCounters?.((prev) => ({ ...prev, inductor: nextNum }));
+        const { id, finalNum } = getUniqueId(prefix, nextNum);
+        componentId = id;
+        console.log(`🔢 Creating inductor: counter was ${componentCounters?.inductor}, now ${finalNum}, ID: ${componentId}`);
+        setComponentCounters?.((prev) => ({ ...prev, inductor: finalNum }));
       } else if (type === 'ammeter') {
         prefix = 'AM';
         const nextNum = (componentCounters?.ammeter ?? 0) + 1;
-        componentId = `${prefix}${nextNum}`;
-        setComponentCounters?.((prev) => ({ ...prev, ammeter: nextNum }));
+        const { id, finalNum } = getUniqueId(prefix, nextNum);
+        componentId = id;
+        console.log(`🔢 Creating ammeter: counter was ${componentCounters?.ammeter}, now ${finalNum}, ID: ${componentId}`);
+        setComponentCounters?.((prev) => ({ ...prev, ammeter: finalNum }));
       } else if (type === 'voltmeter') {
         prefix = 'VM';
         const nextNum = (componentCounters?.voltmeter ?? 0) + 1;
-        componentId = `${prefix}${nextNum}`;
-        setComponentCounters?.((prev) => ({ ...prev, voltmeter: nextNum }));
+        const { id, finalNum } = getUniqueId(prefix, nextNum);
+        componentId = id;
+        console.log(`🔢 Creating voltmeter: counter was ${componentCounters?.voltmeter}, now ${finalNum}, ID: ${componentId}`);
+        setComponentCounters?.((prev) => ({ ...prev, voltmeter: finalNum }));
       } else if (type === 'ground') {
         componentId = '⏚';
       } else if (type === 'junction') {
@@ -744,7 +770,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
 
       setNodes((nds) => [...nds, newNode]);
     },
-    [handleEditValue, handleChangeDraft, handleSaveDraft, handleCancelDraft, setNodes, nodes]
+    [handleEditValue, handleChangeDraft, handleSaveDraft, handleCancelDraft, setNodes, nodes, componentCounters, setComponentCounters]
   );
 
   const onDragOver = useCallback((event) => {
@@ -797,7 +823,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         return;
       }
     },
-    [setNodes, setEdges]
+    [setNodes, setEdges, nodes]
   );
 
   // ── nodeTypes (stable reference — recreated only when mode changes) ───────
