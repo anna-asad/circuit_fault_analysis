@@ -289,20 +289,33 @@ class StructuralFaultDetector:
 
     def _check_voltmeter_placement(self, circuit_data: Dict):
         """
-        A voltmeter must be in PARALLEL: its two terminals must already be
-        connected through the rest of the circuit.
+        A voltmeter must be in PARALLEL across an existing conducting path.
 
-        Build a UF of every component EXCEPT this voltmeter (and other
-        voltmeters, which don't conduct DC current).  Ground-connected
-        components are intentionally included — a voltmeter across a
-        component that has one terminal at ground (e.g. VM1 across R1 where
-        R1 connects to node 0) is perfectly valid, and excluding those
-        components would remove the very paths that prove connectivity.
+        Test: remove this voltmeter (and all other voltmeters) from the graph,
+        then check if the voltmeter's two terminals are still connected through
+        a path that does NOT use the ground bus.
 
-        If the two terminals are NOT connected in that graph, the voltmeter
-        is the sole bridge between them → it is in series → fault.
+        Why exclude ground-connected components
+        ────────────────────────────────────────
+        Every properly grounded circuit has all nodes reachable from ground,
+        so including ground-connected components makes every pair of nodes look
+        "connected" via the ground bus — producing false negatives for a series
+        voltmeter (VM1(n1,n2) with V1(n1,0) and R1(n2,0) would show n1↔0↔n2
+        and pass even though the voltmeter is the only direct n1↔n2 path).
+
+        Instead we build a graph of ONLY non-ground-touching components
+        (excluding the voltmeter under test and all other voltmeters).  If n+
+        and n− are connected in that reduced graph, there is a genuine direct
+        parallel path between them → correct placement.  If not → series fault.
+
+        Special case: if one terminal IS ground ('0'), the other terminal must
+        be reachable from some component that also touches ground — i.e. there
+        must be another component sharing the ground terminal on one side and
+        the non-ground terminal on the other.  We handle this by checking if
+        any single non-voltmeter component directly bridges (n_plus, n_minus).
         """
         all_comps = circuit_data.get("components", [])
+        ground    = circuit_data.get("ground", "0")
 
         for vm in all_comps:
             if vm.get("type") != "voltmeter":
@@ -315,26 +328,50 @@ class StructuralFaultDetector:
 
             n_plus, n_minus = nodes[0], nodes[1]
 
+            # Collect conducting components (exclude all voltmeters)
+            conductors = [
+                c for c in all_comps
+                if c is not vm and c.get("type") != "voltmeter"
+            ]
+
+            # ── Direct bridge check ───────────────────────────────────────────
+            # Is there any single component that directly connects n_plus to n_minus?
+            # This covers the common case: VM across a resistor, or VM across a
+            # source, including when one terminal is ground.
+            vm_node_set = {n_plus, n_minus}
+            direct_bridge = any(
+                set(c.get("nodes", [])[:2]) == vm_node_set
+                for c in conductors
+            )
+            if direct_bridge:
+                continue  # Correctly placed — no fault
+
+            # ── Indirect parallel path check (non-ground paths only) ──────────
+            # Build a UF excluding any component that touches ground.
+            # This removes the ground bus and leaves only direct component-to-
+            # component links.
             uf = UnionFind()
             for node in circuit_data.get("nodes", []):
                 uf.make_set(node)
 
-            for comp in all_comps:
-                if comp is vm:
-                    continue
-                if comp.get("type") == "voltmeter":
-                    continue
+            for comp in conductors:
                 comp_nodes = comp.get("nodes", [])
+                if ground in comp_nodes:
+                    continue          # skip ground-touching components
                 if len(comp_nodes) >= 2:
                     uf.union(comp_nodes[0], comp_nodes[1])
 
-            if not uf.connected(n_plus, n_minus):
-                self.faults.append(
-                    f"Voltmeter {vid} must be connected in parallel, not in series. "
-                    f"Its terminals ({n_plus}, {n_minus}) have no other conducting path "
-                    f"between them, so the voltmeter is blocking current flow. "
-                    f"Connect it across (in parallel with) an existing component or node pair."
-                )
+            if uf.connected(n_plus, n_minus):
+                continue  # There is a non-ground parallel path → correct
+
+            # Neither a direct bridge nor an indirect non-ground path exists.
+            # The voltmeter is in series.
+            self.faults.append(
+                f"Voltmeter {vid} must be connected in parallel, not in series. "
+                f"Its terminals ({n_plus}, {n_minus}) have no other conducting path "
+                f"between them — the voltmeter is the only bridge, which blocks "
+                f"current flow. Connect it across an existing component or node pair."
+            )
 
     # ── Component bypasses ────────────────────────────────────────────────────
 

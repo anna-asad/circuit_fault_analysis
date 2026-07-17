@@ -240,20 +240,27 @@ async def simulate_circuit(circuit: CircuitModel):
         # Step 2: Generate SPICE netlist
         netlist = generate_netlist(circuit_dict)
         
-        # Step 2.5: Pre-simulation structural checks (catch fatal errors before ngspice)
-        # These checks don't need simulation results and can prevent ngspice crashes
+        # Step 2.5: Pre-simulation structural checks (topology only, no sim data needed).
+        # Run meter placement checks now so a misplaced voltmeter/ammeter aborts
+        # before ngspice — which would otherwise succeed anyway (voltmeter is a
+        # 1 GΩ resistor, ammeter is a 0 V source) and silently hide the fault.
         pre_sim_faults = detect_structural_faults(circuit_dict, simulation_result={})
-        critical_pre_faults = [f for f in pre_sim_faults if 'Ammeter' in f or 'Voltmeter' in f]
+
+        # Separate meter-placement faults (fatal) from everything else (warn).
+        meter_faults   = [f for f in pre_sim_faults
+                          if 'Ammeter' in f or 'Voltmeter' in f]
+        non_meter_pre  = [f for f in pre_sim_faults
+                          if 'Ammeter' not in f and 'Voltmeter' not in f]
         
-        if critical_pre_faults:
-            # Meter placement errors are fatal — abort before running ngspice
+        if meter_faults:
+            # Meter placement errors are fatal — abort before running ngspice.
             return SimulationResponse(
                 success=False,
                 netlist=netlist,
-                structural_faults=warnings + critical_pre_faults,
+                structural_faults=warnings + meter_faults + non_meter_pre,
                 pattern_faults=None,
                 simulation_data=None,
-                error="Circuit has structural faults that prevent simulation. Fix meter placement."
+                error="Fix meter placement before simulating: " + meter_faults[0]
             )
         
         # Step 3: Run ngspice simulation

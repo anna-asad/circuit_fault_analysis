@@ -1,3 +1,4 @@
+/* ── Panel shell ─────────────────────────────────────────────────────────── */
 .results-panel {
   width: 300px;
   background: white;
@@ -17,25 +18,11 @@
 }
 
 /* ── Empty state ─────────────────────────────────────────────────────────── */
-.empty-state {
-  padding: 24px 8px;
-  text-align: center;
-}
-.empty-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #6b7280;
-  margin-bottom: 12px;
-}
-.empty-steps {
-  font-size: 12px;
-  color: #9ca3af;
-  text-align: left;
-  padding-left: 18px;
-  line-height: 2;
-}
+.empty-state { padding: 24px 8px; text-align: center; }
+.empty-title { font-size: 14px; font-weight: 600; color: #6b7280; margin-bottom: 12px; }
+.empty-steps { font-size: 12px; color: #9ca3af; text-align: left; padding-left: 18px; line-height: 2; }
 
-/* ── Layout ──────────────────────────────────────────────────────────────── */
+/* ── Content layout ──────────────────────────────────────────────────────── */
 .results-content {
   display: flex;
   flex-direction: column;
@@ -57,67 +44,68 @@
   margin-bottom: 8px;
 }
 
-/* ── Data rows ───────────────────────────────────────────────────────────── */
-.data-grid {
+/* ── Component card list ─────────────────────────────────────────────────── */
+.comp-cards-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
 }
 
-.empty-data-state {
-  padding: 16px 12px;
-  background: #fef9c3;
-  border: 1px solid #fde047;
-  border-radius: 6px;
-  text-align: center;
+/* ── Single component card ───────────────────────────────────────────────── */
+.comp-card {
+  padding: 10px 0;
+  border-bottom: 1px solid #f3f4f6;
 }
+.comp-card:last-child { border-bottom: none; }
 
-.empty-data-state p {
+.comp-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.comp-card-icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.comp-card-heading {
   font-size: 12px;
-  font-weight: 600;
-  color: #854d0e;
-  margin-bottom: 4px;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.3;
 }
 
-.empty-data-state small {
-  font-size: 11px;
-  color: #a16207;
-  line-height: 1.4;
+.comp-card-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 5px;
 }
-
-.data-item {
+.comp-card-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 5px 8px;
-  background: #f9fafb;
-  border-radius: 4px;
-  gap: 8px;
+  align-items: baseline;
+  gap: 6px;
 }
-
-.data-label {
-  font-size: 12px;
-  color: #374151;
-  font-weight: 500;
+.comp-card-label {
+  font-size: 11px;
+  color: #6b7280;
 }
-.data-label-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.data-subtext {
-  font-size: 10px;
-  color: #9ca3af;
-  font-family: 'SFMono-Regular', 'Consolas', monospace;
-}
-.data-value {
+.comp-card-value {
   font-size: 12px;
   font-weight: 700;
   color: #111827;
   font-family: 'SFMono-Regular', 'Consolas', monospace;
   white-space: nowrap;
 }
-.data-value-zero { color: #9ca3af; }
+.comp-card-note {
+  margin: 4px 0 0;
+  font-size: 10px;
+  color: #9ca3af;
+  font-style: italic;
+  line-height: 1.4;
+}
 
 /* ── Fault list ──────────────────────────────────────────────────────────── */
 .fault-list {
@@ -138,6 +126,75 @@
   border-left: 3px solid #eab308;
 }
 
+/* ── No-faults line ──────────────────────────────────────────────────────── */
+.no-faults-line {
+  font-size: 12px;
+  color: #16a34a;
+  font-style: italic;
+  margin: 0;
+  padding: 2px 0;
+}
+
+/* ── Failed simulation banner ────────────────────────────────────────────── */
+.sim-failed-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #991b1b;
+}
+.sim-failed-detail {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #b91c1c;
+  line-height: 1.5;
+}
+
+/* ── All-clear banner ────────────────────────────────────────────────────── */
+.all-clear-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-left: 4px solid #22c55e;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.all-clear-icon {
+  font-size: 20px;
+  color: #16a34a;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.all-clear-text strong {
+  display: block;
+  font-size: 13px;
+  color: #15803d;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.all-clear-text p { font-size: 11px; color: #16a34a; margin: 0; }
+
+/* ── Collapsible toggle ──────────────────────────────────────────────────── */
+.details-toggle {
+  width: 100%;
+  padding: 7px 10px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.1s, color 0.1s;
+  letter-spacing: 0.03em;
+}
+.details-toggle:hover { background: #f3f4f6; color: #374151; }
+
 /* ── ML card ─────────────────────────────────────────────────────────────── */
 .ml-card {
   border-radius: 8px;
@@ -154,10 +211,7 @@
   align-items: center;
   margin-bottom: 6px;
 }
-.ml-predicted {
-  font-size: 13px;
-  color: #111827;
-}
+.ml-predicted { font-size: 13px; color: #111827; }
 .ml-description {
   font-size: 11px;
   color: #4b5563;
@@ -177,7 +231,7 @@
 .conf-mid  { background: #fef9c3; color: #854d0e; }
 .conf-low  { background: #fee2e2; color: #991b1b; }
 
-/* ── Per-label probability bars ──────────────────────────────────────────── */
+/* ── Probability bars ────────────────────────────────────────────────────── */
 .ml-probs {
   display: flex;
   flex-direction: column;
@@ -211,109 +265,10 @@
   border-radius: 3px;
   transition: width 0.3s;
 }
-.ml-prob-bar-fired {
-  background: #f97316;
-}
+.ml-prob-bar-fired { background: #f97316; }
 .ml-prob-pct {
   font-size: 10px;
   color: #6b7280;
   text-align: right;
   font-family: 'SFMono-Regular', 'Consolas', monospace;
-}
-
-/* ── Error / failed state ────────────────────────────────────────────────── */
-.sim-failed-banner {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 6px;
-  padding: 10px 12px;
-  font-size: 13px;
-  color: #991b1b;
-}
-.sim-failed-detail {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #b91c1c;
-  line-height: 1.5;
-}
-
-/* ── Meter measurement rows ──────────────────────────────────────────────── */
-.meter-item {
-  border-left: 3px solid transparent;
-}
-.meter-item-ammeter {
-  background: #fff5f5;
-  border-left-color: #c0392b;
-}
-.meter-item-voltmeter {
-  background: #f0f4ff;
-  border-left-color: #1a6ab5;
-}
-
-/* Reading values inherit bold monospace but use meter accent colors */
-.meter-value-ammeter  { color: #c0392b !important; }
-.meter-value-voltmeter { color: #1a6ab5 !important; }
-
-/* ── "No structural faults" inline line ─────────────────────────────────── */
-.no-faults-line {
-  font-size: 12px;
-  color: #16a34a;
-  font-style: italic;
-  margin: 0;
-  padding: 2px 0;
-}
-
-/* ── All-clear banner ────────────────────────────────────────────────────── */
-.all-clear-banner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-left: 4px solid #22c55e;
-  border-radius: 8px;
-  padding: 12px 14px;
-}
-
-.all-clear-icon {
-  font-size: 20px;
-  color: #16a34a;
-  font-weight: 700;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.all-clear-text strong {
-  display: block;
-  font-size: 13px;
-  color: #15803d;
-  font-weight: 700;
-  margin-bottom: 2px;
-}
-
-.all-clear-text p {
-  font-size: 11px;
-  color: #16a34a;
-  margin: 0;
-}
-
-/* ── Collapsible details toggle ──────────────────────────────────────────── */
-.details-toggle {
-  width: 100%;
-  padding: 7px 10px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #6b7280;
-  cursor: pointer;
-  text-align: center;
-  transition: background 0.1s, color 0.1s;
-  letter-spacing: 0.03em;
-}
-
-.details-toggle:hover {
-  background: #f3f4f6;
-  color: #374151;
 }
