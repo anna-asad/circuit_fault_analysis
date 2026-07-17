@@ -26,6 +26,25 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     throw new Error('No wires found. Connect components.');
   }
 
+  // ── Clean up orphaned edges (referencing deleted nodes) ──────────────────
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const validEdges = edges.filter(edge => {
+    const sourceExists = nodeIds.has(edge.source);
+    const targetExists = nodeIds.has(edge.target);
+    if (!sourceExists || !targetExists) {
+      console.warn(`⚠️ Removing orphaned edge: ${edge.source} → ${edge.target}`);
+      return false;
+    }
+    return true;
+  });
+
+  if (validEdges.length !== edges.length) {
+    console.log(`🧹 Cleaned up ${edges.length - validEdges.length} orphaned edge(s)`);
+  }
+
+  // Use cleaned edges for the rest of the conversion
+  edges = validEdges;
+
   // ── Partition nodes by role ───────────────────────────────────────────────
   const groundNodes   = nodes.filter(n => n.data?.componentType === 'ground');
   const meterTypes    = ['ammeter', 'voltmeter'];

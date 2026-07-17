@@ -43,11 +43,15 @@ const COMPONENT_SVGS = {
     </svg>
   ),
   current_source: (
-    <svg className="component-svg" viewBox="0 0 100 50" preserveAspectRatio="xMidYMid meet">
-      <line x1="0" y1="25" x2="25" y2="25" stroke="currentColor" strokeWidth="2.5"/>
-      <circle cx="50" cy="25" r="15" stroke="currentColor" strokeWidth="2.5" fill="none"/>
-      <line x1="75" y1="25" x2="100" y2="25" stroke="currentColor" strokeWidth="2.5"/>
-      <path d="M 50 15 L 50 35 M 45 30 L 50 35 L 55 30" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinejoin="miter"/>
+    <svg className="component-svg" viewBox="0 0 50 100" preserveAspectRatio="xMidYMid meet">
+      {/* Top terminal (positive, current source) */}
+      <line x1="25" y1="0" x2="25" y2="25" stroke="currentColor" strokeWidth="2.5"/>
+      {/* Circle symbol */}
+      <circle cx="25" cy="50" r="15" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+      {/* Bottom terminal (negative, current sink) */}
+      <line x1="25" y1="75" x2="25" y2="100" stroke="currentColor" strokeWidth="2.5"/>
+      {/* Arrow pointing down (current flow direction: top → bottom) */}
+      <path d="M 25 35 L 25 65 M 20 60 L 25 65 L 30 60" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinejoin="miter"/>
     </svg>
   ),
   // Ammeter: circle with 'A' — two leads, must be wired in series
@@ -202,7 +206,7 @@ function getNodeStyle(type) {
   if (type === 'ammeter')       return NODE_STYLES.ammeter;
   if (type === 'voltmeter')     return NODE_STYLES.voltmeter;
   if (type === 'dc_source')     return { ...NODE_STYLES.base, minWidth: '90px' };
-  if (type === 'current_source') return { ...NODE_STYLES.base, minWidth: '90px' };
+  if (type === 'current_source') return { ...NODE_STYLES.base, minWidth: '60px', minHeight: '90px' };
   return NODE_STYLES.base;
 }
 
@@ -240,7 +244,28 @@ function ValueEditor({ valueDraft, error, onChange, onSave, onCancel }) {
 // ── NodeTerminals ─────────────────────────────────────────────────────────────
 // Rotation-aware handles: positions shift with the component's rotation so wires
 // always stay attached to the correct side after a Ctrl+R rotate.
-function NodeTerminals({ rotation = 0 }) {
+// Current source uses top/bottom by default (vertical orientation).
+function NodeTerminals({ rotation = 0, componentType }) {
+  // Current source has vertical orientation (top/bottom handles)
+  if (componentType === 'current_source') {
+    // For current source: "left" handle is at top, "right" handle is at bottom
+    // Rotation still applies the same mapping, but starting from vertical
+    const CURRENT_SOURCE_POSITIONS = {
+        0: { left: Position.Top,    right: Position.Bottom },
+       90: { left: Position.Right,  right: Position.Left },
+      180: { left: Position.Bottom, right: Position.Top },
+      270: { left: Position.Left,   right: Position.Right },
+    };
+    const positions = CURRENT_SOURCE_POSITIONS[((rotation % 360) + 360) % 360] ?? CURRENT_SOURCE_POSITIONS[0];
+    return (
+      <>
+        <Handle type="source" position={positions.left}  id="left"  className="circuit-handle" />
+        <Handle type="source" position={positions.right} id="right" className="circuit-handle" />
+      </>
+    );
+  }
+  
+  // All other components use horizontal orientation (left/right handles)
   const { left, right } = getHandlePositions(rotation);
   return (
     <>
@@ -253,8 +278,13 @@ function NodeTerminals({ rotation = 0 }) {
 // ── ComponentNode ─────────────────────────────────────────────────────────────
 function ComponentNode({ id, data, mode }) {
   const rotation = data.rotation ?? 0;
-  // Swap width/height when rotated 90°/270° so ReactFlow's resize observer fires
-  const isVertical = rotation === 90 || rotation === 270;
+  
+  // Determine if the component is in a vertical orientation
+  // - Current source: vertical at 0°/180°, horizontal at 90°/270°
+  // - Other components: horizontal at 0°/180°, vertical at 90°/270°
+  const isVertical = data.componentType === 'current_source'
+    ? (rotation === 0 || rotation === 180)
+    : (rotation === 90 || rotation === 270);
   
   // Compute the outer box style with swapped dimensions
   const nodeStyle = {
@@ -281,7 +311,7 @@ function ComponentNode({ id, data, mode }) {
   if (mode === 'results') {
     return (
       <div className="circuit-node circuit-node-component" style={nodeStyle}>
-        <NodeTerminals rotation={rotation} />
+        <NodeTerminals rotation={rotation} componentType={data.componentType} />
         <div className="circuit-node-content component-content">
           <div className="component-visual-container" style={visualContainerStyle}>
             <div className="component-svg-fallback visible">
@@ -297,7 +327,7 @@ function ComponentNode({ id, data, mode }) {
 
   return (
     <div className="circuit-node circuit-node-component" style={nodeStyle}>
-      <NodeTerminals rotation={rotation} />
+      <NodeTerminals rotation={rotation} componentType={componentType} />
       <div className="circuit-node-content component-content">
         {/* Component reference label (R1, C2, V1 …) — stacking context ensures visibility */}
         <div className="component-ref-label" style={labelStyle}>{label}</div>
@@ -376,7 +406,7 @@ function GroundNode({ data }) {
 }
 
 // ── Main canvas component ─────────────────────────────────────────────────────
-function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
+function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, setComponentCounters }) {
   const isReadOnly = mode === 'results';
   const [showInstructions, setShowInstructions] = useState(true);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -647,29 +677,45 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
       const value    = DEFAULT_VALUES[type] ?? 0;
       const nodeType = type === 'ground' ? 'groundNode' : type === 'junction' ? 'junctionNode' : 'componentNode';
 
-      // Generate unique component ID based on type and count
+      // Generate unique component ID using persistent counters (never reuse deleted numbers)
       let componentId;
+      let prefix;
+      
       if (type === 'dc_source') {
-        const vCount = nodes.filter(n => n.data?.componentType === 'dc_source').length;
-        componentId = `V${vCount + 1}`;
+        prefix = 'V';
+        const nextNum = (componentCounters?.dc_source ?? 0) + 1;
+        componentId = `${prefix}${nextNum}`;
+        setComponentCounters?.((prev) => ({ ...prev, dc_source: nextNum }));
       } else if (type === 'current_source') {
-        const iCount = nodes.filter(n => n.data?.componentType === 'current_source').length;
-        componentId = `I${iCount + 1}`;
+        prefix = 'I';
+        const nextNum = (componentCounters?.current_source ?? 0) + 1;
+        componentId = `${prefix}${nextNum}`;
+        setComponentCounters?.((prev) => ({ ...prev, current_source: nextNum }));
       } else if (type === 'resistor') {
-        const rCount = nodes.filter(n => n.data?.componentType === 'resistor').length;
-        componentId = `R${rCount + 1}`;
+        prefix = 'R';
+        const nextNum = (componentCounters?.resistor ?? 0) + 1;
+        componentId = `${prefix}${nextNum}`;
+        setComponentCounters?.((prev) => ({ ...prev, resistor: nextNum }));
       } else if (type === 'capacitor') {
-        const cCount = nodes.filter(n => n.data?.componentType === 'capacitor').length;
-        componentId = `C${cCount + 1}`;
+        prefix = 'C';
+        const nextNum = (componentCounters?.capacitor ?? 0) + 1;
+        componentId = `${prefix}${nextNum}`;
+        setComponentCounters?.((prev) => ({ ...prev, capacitor: nextNum }));
       } else if (type === 'inductor') {
-        const lCount = nodes.filter(n => n.data?.componentType === 'inductor').length;
-        componentId = `L${lCount + 1}`;
+        prefix = 'L';
+        const nextNum = (componentCounters?.inductor ?? 0) + 1;
+        componentId = `${prefix}${nextNum}`;
+        setComponentCounters?.((prev) => ({ ...prev, inductor: nextNum }));
       } else if (type === 'ammeter') {
-        const amCount = nodes.filter(n => n.data?.componentType === 'ammeter').length;
-        componentId = `AM${amCount + 1}`;
+        prefix = 'AM';
+        const nextNum = (componentCounters?.ammeter ?? 0) + 1;
+        componentId = `${prefix}${nextNum}`;
+        setComponentCounters?.((prev) => ({ ...prev, ammeter: nextNum }));
       } else if (type === 'voltmeter') {
-        const vmCount = nodes.filter(n => n.data?.componentType === 'voltmeter').length;
-        componentId = `VM${vmCount + 1}`;
+        prefix = 'VM';
+        const nextNum = (componentCounters?.voltmeter ?? 0) + 1;
+        componentId = `${prefix}${nextNum}`;
+        setComponentCounters?.((prev) => ({ ...prev, voltmeter: nextNum }));
       } else if (type === 'ground') {
         componentId = '⏚';
       } else if (type === 'junction') {
@@ -714,8 +760,20 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit }) {
 
       // ── Delete / Backspace ───────────────────────────────────────────────
       if (event.key === 'Delete' || event.key === 'Backspace') {
+        // Collect IDs of nodes being deleted (before state update)
+        const deletedNodeIds = new Set(nodes.filter(n => n.selected).map(n => n.id));
+        
+        // Remove selected nodes
         setNodes((nds) => nds.filter((n) => !n.selected));
-        setEdges((eds) => eds.filter((e) => !e.selected));
+        
+        // Remove selected edges AND any edges connected to deleted nodes
+        setEdges((eds) => eds.filter((e) => {
+          // Remove if edge is selected
+          if (e.selected) return false;
+          // Remove if edge connects to a deleted node
+          if (deletedNodeIds.has(e.source) || deletedNodeIds.has(e.target)) return false;
+          return true;
+        }));
         return;
       }
 
