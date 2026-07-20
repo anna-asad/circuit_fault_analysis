@@ -19,7 +19,6 @@ nominal_lookup = joblib.load(NOMINAL_LOOKUP_PATH)
 
 def extract_features(row):
     comps_dict = json.loads(row["component_values"])
-    comps = list(comps_dict.values())
     volts = list(json.loads(row["node_voltages"]).values())
     currs = list(json.loads(row["branch_currents"]).values())
 
@@ -38,11 +37,7 @@ def extract_features(row):
     n_dev_over_20pct = sum(d > 0.20 for d in deviations)
 
     return pd.Series({
-        "n_components": len(comps),
-        "comp_mean": np.mean(comps) if comps else 0,
-        "comp_max": np.max(comps) if comps else 0,
-        "comp_min": np.min(comps) if comps else 0,
-        "comp_std": np.std(comps) if comps else 0,
+        "n_components": len(comps_dict),
         "n_nodes": len(volts),
         "volt_mean": np.mean(volts) if volts else 0,
         "volt_max": np.max(volts) if volts else 0,
@@ -50,14 +45,20 @@ def extract_features(row):
         "n_currents": len(currs),
         "curr_mean_abs": np.mean(np.abs(currs)) if currs else 0,
         "curr_max_abs": np.max(np.abs(currs)) if currs else 0,
-        "n_missing_currents": len(comps) - len(currs),
+        "n_missing_currents": len(comps_dict) - len(currs),
         "max_deviation_ratio": max_dev,
         "second_deviation_ratio": second_dev,
         "deviation_ratio_2nd_over_1st": dev_ratio,
         "n_components_deviated_over_20pct": n_dev_over_20pct,
     })
 
-
+def debug_nominal(case):
+    comps_dict = json.loads(case["component_values"])
+    key = frozenset(comps_dict.keys())
+    nominal = nominal_lookup.get(key, {})
+    print(f"  key={sorted(key)}")
+    print(f"  nominal found: {nominal}")
+    print(f"  actual values: {comps_dict}")
 def predict_one(sample, threshold=THRESHOLD):
     row = pd.Series(sample)
     features = extract_features(row)

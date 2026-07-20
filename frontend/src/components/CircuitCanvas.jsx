@@ -95,12 +95,12 @@ const NODE_STYLES = {
     fontSize: '11px',
     fontWeight: '600',
     fontFamily: 'monospace',
-    border: '1.5px solid #555',
+    border: 'none',
     whiteSpace: 'pre-line',
     textAlign: 'center',
     minWidth: '80px',
     minHeight: '52px',
-    background: '#f0f0e8',
+    background: 'transparent',
     color: '#1a1a1a',
   },
   junction: {
@@ -474,26 +474,31 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
     );
   }, [setNodes]);
 
+  const WIRE_COLOR        = '#1a1a1a';
+  const GROUND_WIRE_COLOR = '#16a34a'; // green — ground connections
+
   // ── Wire connection ───────────────────────────────────────────────────────
   const onConnect = useCallback(
     (params) => {
-      // Mark that a valid handle-to-handle connection was made so onConnectEnd
-      // does not also try to auto-insert a junction for the same drag gesture.
       window.connectionHandled = true;
+      const isGroundEdge = nodes.some(
+        n => (n.id === params.source || n.id === params.target)
+          && n.data?.componentType === 'ground'
+      );
       setEdges((eds) =>
         addEdge(
           {
             ...params,
             type: 'smoothstep',
             animated: false,
-            style: { stroke: '#1a1a1a', strokeWidth: 2 },
+            style: { stroke: isGroundEdge ? GROUND_WIRE_COLOR : WIRE_COLOR, strokeWidth: 2 },
             pathOptions: { borderRadius: 0 },
           },
           eds
         )
       );
     },
-    [setEdges]
+    [setEdges, nodes]
   );
 
   // ── Handle ground connecting to edges (wires) ────────────────────────────
@@ -597,7 +602,9 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       const jy = Math.round(nearestPoint.y / SNAP) * SNAP;
 
       const junctionId = `junction_auto_${Date.now()}`;
-      const WIRE_STYLE = { stroke: '#1a1a1a', strokeWidth: 2 };
+      const isGroundNode = startNode?.data?.componentType === 'ground';
+      const WIRE_STYLE       = { stroke: WIRE_COLOR,        strokeWidth: 2 };
+      const GND_WIRE_STYLE   = { stroke: GROUND_WIRE_COLOR, strokeWidth: 2 };
       const WIRE_OPTS  = { pathOptions: { borderRadius: 0 } };
 
       // Determine which handle on the connecting component faces the junction.
@@ -649,7 +656,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
             target:       junctionId,
             targetHandle: 'bottom',
             type:         'smoothstep',
-            style:        WIRE_STYLE,
+            style:        isGroundNode ? GND_WIRE_STYLE : WIRE_STYLE,
             ...WIRE_OPTS,
           },
         ];
@@ -886,7 +893,6 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         elementsSelectable={!isReadOnly}
         defaultEdgeOptions={{
           type: 'smoothstep',
-          style: { stroke: '#1a1a1a', strokeWidth: 2 },
           pathOptions: { borderRadius: 0 },
         }}
       >

@@ -1,20 +1,13 @@
-"""
-Fault Analyzer — uses the trained RandomForest model from src/train.py.
+"""Fault Analyzer — RandomForest multi-label classifier."""
 
-Feature extraction mirrors src/predictor.py exactly, so the model sees
-the same input schema it was trained on.
-"""
-
-import json
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 
 from topology_matcher import map_to_nominal_values
 
-# ── Locate model artefacts ────────────────────────────────────────────────────
 MODEL_DIR = Path(__file__).parent.parent / "models"
 REQUIRED_FILES = {
     "classifier":      MODEL_DIR / "fault_classifier.joblib",
@@ -23,8 +16,6 @@ REQUIRED_FILES = {
     "nominal_lookup":  MODEL_DIR / "nominal_lookup.joblib",
 }
 
-# Try to import the ML stack (only present in the full venv, not in the
-# minimal FastAPI venv).  Fail gracefully so the API still starts.
 try:
     import joblib
     import pandas as pd
@@ -33,11 +24,8 @@ except ImportError:
     _ML_IMPORTS_OK = False
 
 ML_MODEL_AVAILABLE = _ML_IMPORTS_OK and all(f.exists() for f in REQUIRED_FILES.values())
-
 THRESHOLD = 0.5
 
-
-# ── Feature extraction (must stay in sync with src/train.py) ─────────────────
 
 def _extract_features(
     component_values: Dict[str, float],
@@ -46,126 +34,61 @@ def _extract_features(
     nominal_lookup:   Dict,
     circuit_data:     Dict = None,
 ) -> Dict[str, float]:
-    """
-    Compute the 17 features the RandomForest was trained on.
-    Mirrors extract_features() in src/train.py / src/predictor.py exactly.
+    comps = list(component_values.values())
+    volts = list(node_voltages.values())
+    currs = list(branch_currents.values())
 
-    Key notes on current sources
-    ----------------------------
-    * A current source forces a fixed current — ngspice does not report its
-      branch current via @I[i] in the same way it does for resistors, and the
-      dataset generator never requested those readings.  Including a current
-      source in `component_values` (for comp_mean / comp_std etc.) is correct,
-      but it must NOT be counted in `n_missing_currents`.
-    * `n_missing_currents` was designed as a signal for wrong_component_type
-      (a resistor replaced by a capacitor, which produces no @R[i] reading).
-      It should count only passive components (R, C, L) minus the number of
-      branch currents returned — sources are excluded from this calculation.
-    """
-    comps  = list(component_values.values())
-    volts  = list(node_voltages.values())
-    currs  = list(branch_currents.values())
-
-    # Count only passive components for n_missing_currents.
-    # Sources (dc_source, current_source) never appear in branch_currents from
-    # the dataset generator, so including them inflates the missing-count and
-    # triggers false wrong_component_type predictions.
+    # Count passives only — sources and meters don't appear in branch_currents
     PASSIVE_TYPES = {"resistor", "capacitor", "inductor"}
-    n_passive = sum(
-        1 for comp in component_values
-        # component_values keys are component IDs (e.g. "R1", "C1") not types,
-        # so we infer type from the ID prefix when the type is not stored here.
-        # The safe fallback: treat every component as passive UNLESS its ID
-        # starts with 'V' or 'I' (standard SPICE naming for sources).
-        if not (comp.upper().startswith('V') or comp.upper().startswith('I'))
-    )
+    if circuit_data:
+        n_passive = sum(
+            1 for c in circuit_data.get("components", [])
+            if c.get("type") in PASSIVE_TYPES
+        )
+    else:
+        n_passive = sum(
+            1 for c in component_values
+            if not (c.upper().startswith('V') or c.upper().startswith('I'))
+        )
 
-    # Deviation-from-nominal features using topology-based matching
-    nominal, debug_msg = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
-    
-    # ═══════════════════════════════════════════════════════════════════════════
-    # DEBUG LOGGING: Print component comparison before prediction
-    # ═══════════════════════════════════════════════════════════════════════════
-    print("\n" + "="*80)
-    print("🔍 FAULT CLASSIFIER DEBUG — Component Analysis")
-    print("="*80)
-    print(f"🔍 Topology Matching Result:")
-    for line in debug_msg.split('\n'):
-        print(f"   {line}")
-    print("\n📊 Per-Component Comparison:")
-    print("-" * 80)
-    
+    nominal, _ = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
+
     deviations = []
     for name, val in component_values.items():
         nom = nominal.get(name)
         if nom and nom != 0:
-            deviation = abs(val - nom) / abs(nom)
-            deviations.append(deviation)
-            ratio_str = f"{deviation:.2%}"
-            current_str = branch_currents.get(name.upper(), "N/A")
-            print(f"  {name:8s} | Actual: {val:12.6g} | Nominal: {nom:12.6g} | "
-                  f"Deviation: {ratio_str:8s} | Current: {current_str}")
-        else:
-            current_str = branch_currents.get(name.upper(), "N/A")
-            print(f"  {name:8s} | Actual: {val:12.6g} | Nominal: {'NONE':>12s} | "
-                  f"Deviation: {'N/A':8s} | Current: {current_str}")
-    
-    print("-" * 80)
+            deviations.append(abs(val - nom) / abs(nom))
 
-    devs_sorted = sorted(deviations, reverse=True)
-    max_dev    = devs_sorted[0] if devs_sorted else 0.0
-    second_dev = devs_sorted[1] if len(devs_sorted) > 1 else 0.0
-    dev_ratio  = (second_dev / max_dev) if max_dev > 0 else 0.0
-    n_dev_over_20pct = sum(d > 0.20 for d in deviations)
+    devs_sorted  = sorted(deviations, reverse=True)
+    max_dev      = devs_sorted[0] if devs_sorted else 0.0
+    second_dev   = devs_sorted[1] if len(devs_sorted) > 1 else 0.0
+    dev_ratio    = (second_dev / max_dev) if max_dev > 0 else 0.0
+    n_over_20pct = sum(d > 0.20 for d in deviations)
 
-    features = {
-        "n_components":                      len(comps),
-        "comp_mean":                         float(np.mean(comps))        if comps  else 0.0,
-        "comp_max":                          float(np.max(comps))         if comps  else 0.0,
-        "comp_min":                          float(np.min(comps))         if comps  else 0.0,
-        "comp_std":                          float(np.std(comps))         if comps  else 0.0,
-        "n_nodes":                           len(volts),
-        "volt_mean":                         float(np.mean(volts))        if volts  else 0.0,
-        "volt_max":                          float(np.max(volts))         if volts  else 0.0,
-        "volt_min":                          float(np.min(volts))         if volts  else 0.0,
-        "n_currents":                        len(currs),
-        "curr_mean_abs":                     float(np.mean(np.abs(currs))) if currs else 0.0,
-        "curr_max_abs":                      float(np.max(np.abs(currs))) if currs  else 0.0,
-        # Use passive-only count so current sources don't inflate this signal.
-        "n_missing_currents":                n_passive - len(currs),
-        "max_deviation_ratio":               max_dev,
-        "second_deviation_ratio":            second_dev,
-        "deviation_ratio_2nd_over_1st":      dev_ratio,
-        "n_components_deviated_over_20pct":  float(n_dev_over_20pct),
+    all_features = {
+        "n_components":                     len(comps),
+        "comp_mean":                        float(np.mean(comps))         if comps else 0.0,
+        "comp_max":                         float(np.max(comps))          if comps else 0.0,
+        "comp_min":                         float(np.min(comps))          if comps else 0.0,
+        "comp_std":                         float(np.std(comps))          if comps else 0.0,
+        "n_nodes":                          len(volts),
+        "volt_mean":                        float(np.mean(volts))         if volts else 0.0,
+        "volt_max":                         float(np.max(volts))          if volts else 0.0,
+        "volt_min":                         float(np.min(volts))          if volts else 0.0,
+        "n_currents":                       len(currs),
+        "curr_mean_abs":                    float(np.mean(np.abs(currs))) if currs else 0.0,
+        "curr_max_abs":                     float(np.max(np.abs(currs)))  if currs else 0.0,
+        "n_missing_currents":               n_passive - len(currs),
+        "max_deviation_ratio":              max_dev,
+        "second_deviation_ratio":           second_dev,
+        "deviation_ratio_2nd_over_1st":     dev_ratio,
+        "n_components_deviated_over_20pct": float(n_over_20pct),
     }
-    
-    print(f"\n🎯 Computed Deviation Features:")
-    print(f"   max_deviation_ratio:              {max_dev:.4f} ({max_dev*100:.2f}%)")
-    print(f"   second_deviation_ratio:           {second_dev:.4f} ({second_dev*100:.2f}%)")
-    print(f"   deviation_ratio_2nd_over_1st:     {dev_ratio:.4f}")
-    print(f"   n_components_deviated_over_20pct: {n_dev_over_20pct}")
-    print(f"   n_missing_currents:               {n_passive - len(currs)}")
-    
-    print(f"\n⚠️  BROKEN Component Statistics (NOT sent to model):")
-    print(f"   comp_mean: {features['comp_mean']:.6f}  ← Mixes units (Ω, V, A)")
-    print(f"   comp_max:  {features['comp_max']:.6f}  ← Max of what?")
-    print(f"   comp_min:  {features['comp_min']:.6f}  ← Min of what?")
-    print(f"   comp_std:  {features['comp_std']:.6f}  ← Meaningless variance")
-    
-    # Create cleaned features dict WITHOUT the broken comp_* statistics
-    # These will be excluded from the model input
-    features_for_model = {k: v for k, v in features.items() 
-                          if k not in ['comp_mean', 'comp_max', 'comp_min', 'comp_std']}
-    
-    print(f"\n📦 Features Being Sent to Model (broken ones excluded):")
-    for key, val in features_for_model.items():
-        print(f"   {key:40s} = {val:12.6f}")
-    print("="*80 + "\n")
-    
-    return features_for_model
 
+    # comp_mean/max/min/std mix units (Ω, V, A) — excluded from model input
+    return {k: v for k, v in all_features.items()
+            if k not in ("comp_mean", "comp_max", "comp_min", "comp_std")}
 
-# ── FaultAnalyzer class ───────────────────────────────────────────────────────
 
 class FaultAnalyzer:
     """Runs the trained RandomForest multi-label classifier."""
@@ -178,106 +101,45 @@ class FaultAnalyzer:
             self._label_cols     = joblib.load(REQUIRED_FILES["label_columns"])
             self._nominal_lookup = joblib.load(REQUIRED_FILES["nominal_lookup"])
 
-    # ── Public API ────────────────────────────────────────────────────────────
-
     def analyze(
         self,
         circuit_data:    Dict,
         node_voltages:   Dict[str, float],
         branch_currents: Dict[str, float],
     ) -> Dict:
-        """
-        Run the full ML prediction pipeline.
-
-        Parameters
-        ----------
-        circuit_data    : the CircuitModel dict (has .components list)
-        node_voltages   : {node_name: voltage}  from ngspice
-        branch_currents : {component_id: current} from ngspice
-
-        Returns
-        -------
-        dict compatible with the existing SimulationResponse.pattern_faults field
-        """
         if not self.model_loaded:
             return self._unavailable_response()
 
-        # Build component-values dict from the circuit definition
         component_values: Dict[str, float] = {}
         for comp in circuit_data.get("components", []):
             ctype = comp.get("type", "")
             if ctype in ("resistor", "capacitor", "inductor", "dc_source", "current_source"):
-                cid = comp.get("id", "")
-                component_values[cid] = float(comp.get("value", 0))
+                component_values[comp.get("id", "")] = float(comp.get("value", 0))
 
-        # Non-ground node voltages only (ground = 0 V by definition, not a signal)
         ground = circuit_data.get("ground", "0")
         signal_voltages = {k: v for k, v in node_voltages.items() if k != ground}
 
         try:
             features = _extract_features(
-                component_values,
-                signal_voltages,
-                branch_currents,
-                self._nominal_lookup,
-                circuit_data,  # Pass full circuit data for connectivity analysis
+                component_values, signal_voltages, branch_currents,
+                self._nominal_lookup, circuit_data,
             )
-            return self._predict(features, component_values)
-
+            return self._predict(features)
         except Exception as exc:
             return {
                 "predicted_fault": "Error",
                 "confidence": 0.0,
                 "all_probabilities": {},
                 "fault_type": "prediction_error",
-                "description": f"Feature extraction / prediction error: {exc}",
+                "description": f"Prediction error: {exc}",
             }
-
-    # ── Keep old signature for any caller that already passes ml_features ────
-    def analyze_pattern_faults(self, ml_features: Dict) -> Dict:
-        """
-        Legacy shim — called by main.py with the old simple feature dict.
-        Forwards to the real model when possible; falls back gracefully.
-        """
-        if not self.model_loaded:
-            return self._unavailable_response()
-
-        # ml_features from old extract_features_for_ml() doesn't have the
-        # right schema.  Return a clear message so the caller knows to
-        # switch to analyze().
-        return {
-            "predicted_fault": "Unknown",
-            "confidence": 0.0,
-            "all_probabilities": {},
-            "fault_type": "schema_mismatch",
-            "description": (
-                "Legacy feature schema detected. "
-                "Switch to FaultAnalyzer.analyze(circuit_data, voltages, currents)."
-            ),
-        }
 
     def is_model_loaded(self) -> bool:
         return self.model_loaded
 
-    # ── Internals ─────────────────────────────────────────────────────────────
-
-    def _predict(self, features: Dict[str, float], component_values: Dict[str, float]) -> Dict:
-        """Run the RandomForest and format a response."""
+    def _predict(self, features: Dict[str, float]) -> Dict:
         X = pd.DataFrame([features]).reindex(columns=self._feature_cols, fill_value=0)
 
-        # ═══════════════════════════════════════════════════════════════════════
-        # DEBUG: Print the complete feature vector being sent to the model
-        # ═══════════════════════════════════════════════════════════════════════
-        print("\n" + "="*80)
-        print("🤖 MODEL PREDICTION DEBUG — Feature Vector")
-        print("="*80)
-        print("📊 Complete feature vector being sent to classifier:")
-        for col in self._feature_cols:
-            val = X[col].iloc[0]
-            print(f"   {col:40s} = {val:12.6f}")
-        print("="*80)
-
-        # Per-label probabilities
         proba_per_label = self._clf.predict_proba(X)
         label_probs: Dict[str, float] = {}
         for i, label in enumerate(self._label_cols):
@@ -286,35 +148,17 @@ class FaultAnalyzer:
             p_yes   = arr[classes.index(1)] if 1 in classes else 0.0
             label_probs[label] = float(p_yes)
 
-        # ═══════════════════════════════════════════════════════════════════════
-        # DEBUG: Print probability for each fault type
-        # ═══════════════════════════════════════════════════════════════════════
-        print("\n🎯 Model Probabilities (threshold = {:.2f}):".format(THRESHOLD))
-        print("-" * 80)
-        for label, prob in sorted(label_probs.items(), key=lambda x: -x[1]):
-            fired = "🔥 FIRED" if prob >= THRESHOLD else ""
-            print(f"   {label:30s} {prob:6.2%}  {fired}")
-        print("="*80 + "\n")
-
-        # Fired labels (above threshold)
-        fired = [lbl for lbl, p in label_probs.items() if p >= THRESHOLD]
+        fired     = [lbl for lbl, p in label_probs.items() if p >= THRESHOLD]
         top_label, top_prob = max(label_probs.items(), key=lambda kv: kv[1])
 
         if not fired:
-            predicted = "Normal"
-            confidence = 1.0 - top_prob           # confidence *no* fault
-            fault_type = "Normal"
+            predicted, confidence, fault_type = "Normal", 1.0 - top_prob, "Normal"
         elif len(fired) == 1:
-            predicted  = fired[0]
-            confidence = label_probs[fired[0]]
-            fault_type = fired[0]
+            predicted, confidence, fault_type = fired[0], label_probs[fired[0]], fired[0]
         else:
             predicted  = "Multiple_Faults (" + " + ".join(fired) + ")"
             confidence = float(np.mean([label_probs[f] for f in fired]))
             fault_type = "Multiple_Faults"
-
-        print(f"📋 Final Prediction: {predicted} (confidence: {confidence:.2%})")
-        print("="*80 + "\n")
 
         return {
             "predicted_fault":   predicted,
@@ -327,32 +171,15 @@ class FaultAnalyzer:
     @staticmethod
     def _describe(fault_type: str, fired: List[str]) -> str:
         descriptions = {
-            "Normal": "Circuit operating within normal parameters.",
-            "drift": (
-                "Component value drift detected. One or more components have aged "
-                "or drifted from their rated value (20–70 % off nominal)."
-            ),
-            "partial_short": (
-                "Partial short circuit detected. A component shows abnormally low "
-                "resistance (1–15 % of nominal), indicating a near-short fault."
-            ),
-            "partial_open": (
-                "Partial open circuit detected. A component shows abnormally high "
-                "resistance (5–50× nominal), indicating a near-open fault."
-            ),
-            "wrong_component_type": (
-                "Wrong component type detected. The circuit's electrical behaviour "
-                "is consistent with a component being replaced by the wrong type "
-                "(e.g. a capacitor where a resistor is expected)."
-            ),
-            "Multiple_Faults": (
-                "Multiple simultaneous faults detected: "
-                + ", ".join(fired)
-                + ". The circuit exhibits signatures of more than one fault class."
-            ),
-            "prediction_error":  "An error occurred during fault prediction.",
-            "schema_mismatch":   "Feature schema mismatch — see description.",
-            "model_unavailable": "ML model not loaded. Run python src/train.py first.",
+            "Normal":               "Circuit operating within normal parameters.",
+            "drift":                "Component value drift detected (20–70% off nominal).",
+            "partial_short":        "Partial short circuit detected (1–15% of nominal resistance).",
+            "partial_open":         "Partial open circuit detected (5–50× nominal resistance).",
+            "wrong_component_type": "Wrong component type — electrical behaviour doesn't match the schematic.",
+            "Multiple_Faults":      "Multiple faults: " + ", ".join(fired) + ".",
+            "prediction_error":     "An error occurred during fault prediction.",
+            "schema_mismatch":      "Feature schema mismatch.",
+            "model_unavailable":    "ML model not loaded. Run python src/train.py first.",
         }
         return descriptions.get(fault_type, f"Fault type: {fault_type}")
 
@@ -363,13 +190,5 @@ class FaultAnalyzer:
             "confidence": 0.0,
             "all_probabilities": {},
             "fault_type": "model_unavailable",
-            "description": (
-                "ML model not loaded. Install scikit-learn/joblib/pandas "
-                "and run: python src/train.py"
-            ),
+            "description": "ML model not loaded. Install dependencies and run: python src/train.py",
         }
-
-
-def analyze_faults(ml_features: Dict) -> Optional[Dict]:
-    """Legacy convenience wrapper."""
-    return FaultAnalyzer().analyze_pattern_faults(ml_features)

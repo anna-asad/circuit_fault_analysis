@@ -38,7 +38,6 @@ def register_nominal(component_names, nominal_values):
 
 def extract_features(row):
     comps_dict = json.loads(row["component_values"])
-    comps = list(comps_dict.values())
     volts = list(json.loads(row["node_voltages"]).values())
     currs = list(json.loads(row["branch_currents"]).values())
 
@@ -64,11 +63,7 @@ def extract_features(row):
     )
 
     return pd.Series({
-        "n_components": len(comps),
-        "comp_mean": np.mean(comps) if comps else 0,
-        "comp_max": np.max(comps) if comps else 0,
-        "comp_min": np.min(comps) if comps else 0,
-        "comp_std": np.std(comps) if comps else 0,
+        "n_components": len(comps_dict),
         "n_nodes": len(volts),
         "volt_mean": np.mean(volts) if volts else 0,
         "volt_max": np.max(volts) if volts else 0,

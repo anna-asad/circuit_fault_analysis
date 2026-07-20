@@ -1,46 +1,41 @@
 """FastAPI Backend for Circuit Fault Detector"""
 
+import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 import uvicorn
 
-# Import all components
 from validators import CircuitValidator, ComponentSpec, validate_circuit_quick
 from netlist_generator import generate_netlist
 from simulation_runner import SimulationRunner
 from structural_faults import detect_structural_faults
 from fault_analyzer import FaultAnalyzer
 
-# Initialize FastAPI app
+log = logging.getLogger(__name__)
+
 app = FastAPI(
     title="Circuit Fault Detector API",
     description="Backend API for circuit simulation and fault detection",
     version="1.0.0"
 )
 
-# ============================================================================
-# Global Model Cache - Load once at startup, reuse for all requests
-# ============================================================================
 _fault_analyzer: FaultAnalyzer = None
 
 @app.on_event("startup")
 async def load_models():
-    """Load ML model once at startup to avoid reloading on every request."""
     global _fault_analyzer
-    print("🔄 Loading ML model...")
     _fault_analyzer = FaultAnalyzer()
     if _fault_analyzer.is_model_loaded():
-        print("✅ ML model loaded successfully")
+        log.info("ML model loaded")
     else:
-        print("⚠️  ML model not available (install dependencies and run train.py)")
+        log.warning("ML model not available — run python src/train.py")
 
 def get_fault_analyzer() -> FaultAnalyzer:
-    """Get the cached fault analyzer instance."""
     return _fault_analyzer
 
-# CORS middleware for React frontend
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -57,12 +52,9 @@ app.add_middleware(
 )
 
 
-# ============================================================================
-# Data Models (Pydantic schemas)
-# ============================================================================
+# ── Data Models ───────────────────────────────────────────────────────────────
 
 class ComponentModel(BaseModel):
-    """Represents a single circuit component."""
     id: str = Field(..., description="Unique component identifier (e.g., 'R1', 'V1')")
     type: str = Field(..., description="Component type: dc_source, current_source, resistor, capacitor, inductor, ground, ammeter, voltmeter")
     value: float = Field(..., description="Component value (resistance, capacitance, voltage, etc.)")
@@ -157,7 +149,7 @@ async def get_components():
         {
             "type": "resistor",
             "label": "Resistor",
-            "icon": "🔲",
+            "icon": "♒",
             "value_range": {"min": 1, "max": 1e6, "default": 1000},
             "unit": "Ω",
             "description": "Resistor component"
@@ -222,7 +214,6 @@ async def simulate_circuit(circuit: CircuitModel):
     """
     
     try:
-        # Step 1: Validate circuit
         circuit_dict = circuit.model_dump()
         validator = CircuitValidator()
         is_valid, errors, warnings = validator.validate(circuit_dict)
@@ -237,13 +228,8 @@ async def simulate_circuit(circuit: CircuitModel):
                 error=f"Circuit validation failed: {'; '.join(errors)}"
             )
         
-        # Step 2: Generate SPICE netlist
         netlist = generate_netlist(circuit_dict)
         
-        # Step 2.5: Pre-simulation structural checks (topology only, no sim data needed).
-        # Run meter placement checks now so a misplaced voltmeter/ammeter aborts
-        # before ngspice — which would otherwise succeed anyway (voltmeter is a
-        # 1 GΩ resistor, ammeter is a 0 V source) and silently hide the fault.
         pre_sim_faults = detect_structural_faults(circuit_dict, simulation_result={})
 
         # Separate meter-placement faults (fatal) from everything else (warn).
@@ -260,10 +246,9 @@ async def simulate_circuit(circuit: CircuitModel):
                 structural_faults=warnings + meter_faults + non_meter_pre,
                 pattern_faults=None,
                 simulation_data=None,
-                error="Fix meter placement before simulating: " + meter_faults[0]
+                error=meter_faults[0]
             )
         
-        # Step 3: Run ngspice simulation
         runner = SimulationRunner()
         sim_result = runner.run_simulation(netlist, circuit_data=circuit_dict)
         

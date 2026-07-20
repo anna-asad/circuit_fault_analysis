@@ -34,6 +34,7 @@
 /* ── Wire / edge styling ────────────────────────────────────────────────── */
 .react-flow__edge-path {
   stroke-linecap: square !important;
+  stroke: #c049f3d2 !important;
   stroke-linejoin: miter !important;
 }
 
@@ -45,17 +46,16 @@
 .react-flow__node.selected > .circuit-node-component,
 .react-flow__node.selected > .circuit-node-junction,
 .react-flow__node.selected > .circuit-node-ground {
-  outline: 2px solid #2563eb;
+  outline: 2px solid #e554a6;
   outline-offset: 2px;
 }
-
 /* ReactFlow wraps nodes in an extra div; target the selection highlight via box-shadow */
 .react-flow__node.selected {
   box-shadow: none !important;
 }
 
 .react-flow__edge.selected .react-flow__edge-path {
-  stroke: #2563eb !important;
+  stroke: #5f06a8 !important;
   stroke-width: 2.5px !important;
 }
 
@@ -126,7 +126,7 @@
   width: 100%;
   height: auto;
   max-height: 32px;
-  color: #1a1a1a;
+  color: #1caeed;
 }
 
 .component-svg-fallback {
