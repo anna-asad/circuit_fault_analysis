@@ -542,6 +542,7 @@ def make_sample(circuit_name, circuit_def, fault_type, sample_index, folder):
         "fault_type": fault_type,
         "faulted_components": ";".join(faulted_components) if faulted_components else "",
         "component_values": json.dumps(component_values),
+        "design_values": json.dumps({name: elements[name]["value"] for name in r_names}),  # NEW
         "node_voltages": json.dumps(node_voltages),
         "branch_currents": json.dumps(branch_currents),
         "success": success,

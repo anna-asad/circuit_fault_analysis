@@ -201,6 +201,7 @@
   height: 36px;
   display: block;
   overflow: visible;
+  color: #16a34a;   /* ground color */
 }
 
 /* ── Connection handles ──────────────────────────────────────────────────── */

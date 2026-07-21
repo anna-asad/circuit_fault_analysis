@@ -26,19 +26,19 @@ except ImportError:
 ML_MODEL_AVAILABLE = _ML_IMPORTS_OK and all(f.exists() for f in REQUIRED_FILES.values())
 THRESHOLD = 0.5
 
-
 def _extract_features(
     component_values: Dict[str, float],
-    node_voltages:    Dict[str, float],
-    branch_currents:  Dict[str, float],
-    nominal_lookup:   Dict,
-    circuit_data:     Dict = None,
+    node_voltages: Dict[str, float],
+    branch_currents: Dict[str, float],
+    nominal_lookup: Dict,
+    circuit_data: Dict = None,
 ) -> Dict[str, float]:
-    comps = list(component_values.values())
+
     volts = list(node_voltages.values())
     currs = list(branch_currents.values())
+    curr_abs = np.abs(currs)
 
-    # Count passives only — sources and meters don't appear in branch_currents
+    # Count passive components
     PASSIVE_TYPES = {"resistor", "capacitor", "inductor"}
     if circuit_data:
         n_passive = sum(
@@ -47,11 +47,16 @@ def _extract_features(
         )
     else:
         n_passive = sum(
-            1 for c in component_values
-            if not (c.upper().startswith('V') or c.upper().startswith('I'))
+            1 for name in component_values
+            if not (name.upper().startswith("V") or name.upper().startswith("I"))
         )
 
-    nominal, _ = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
+    # Map user circuit to nominal values
+    nominal, _ = map_to_nominal_values(
+        component_values,
+        nominal_lookup,
+        circuit_data,
+    )
 
     deviations = []
     for name, val in component_values.items():
@@ -59,37 +64,39 @@ def _extract_features(
         if nom and nom != 0:
             deviations.append(abs(val - nom) / abs(nom))
 
-    devs_sorted  = sorted(deviations, reverse=True)
-    max_dev      = devs_sorted[0] if devs_sorted else 0.0
-    second_dev   = devs_sorted[1] if len(devs_sorted) > 1 else 0.0
-    dev_ratio    = (second_dev / max_dev) if max_dev > 0 else 0.0
-    n_over_20pct = sum(d > 0.20 for d in deviations)
+    deviations_sorted = sorted(deviations, reverse=True)
 
-    all_features = {
-        "n_components":                     len(comps),
-        "comp_mean":                        float(np.mean(comps))         if comps else 0.0,
-        "comp_max":                         float(np.max(comps))          if comps else 0.0,
-        "comp_min":                         float(np.min(comps))          if comps else 0.0,
-        "comp_std":                         float(np.std(comps))          if comps else 0.0,
-        "n_nodes":                          len(volts),
-        "volt_mean":                        float(np.mean(volts))         if volts else 0.0,
-        "volt_max":                         float(np.max(volts))          if volts else 0.0,
-        "volt_min":                         float(np.min(volts))          if volts else 0.0,
-        "n_currents":                       len(currs),
-        "curr_mean_abs":                    float(np.mean(np.abs(currs))) if currs else 0.0,
-        "curr_max_abs":                     float(np.max(np.abs(currs)))  if currs else 0.0,
-        "n_missing_currents":               n_passive - len(currs),
-        "max_deviation_ratio":              max_dev,
-        "second_deviation_ratio":           second_dev,
-        "deviation_ratio_2nd_over_1st":     dev_ratio,
-        "n_components_deviated_over_20pct": float(n_over_20pct),
+    max_dev = deviations_sorted[0] if deviations_sorted else 0.0
+    second_dev = deviations_sorted[1] if len(deviations_sorted) > 1 else 0.0
+    dev_ratio = second_dev / max_dev if max_dev > 0 else 0.0
+    n_dev_over_20pct = sum(d > 0.20 for d in deviations)
+
+    return {
+        "n_components": len(component_values),
+
+        "n_nodes": len(volts),
+        "volt_mean": float(np.mean(volts)) if volts else 0.0,
+        "volt_max": float(np.max(volts)) if volts else 0.0,
+        "volt_min": float(np.min(volts)) if volts else 0.0,
+        "volt_std": float(np.std(volts)) if volts else 0.0,
+        "volt_range": float(np.max(volts) - np.min(volts)) if volts else 0.0,
+
+        "n_currents": len(currs),
+        "curr_mean_abs": float(np.mean(curr_abs)) if currs else 0.0,
+        "curr_max_abs": float(np.max(curr_abs)) if currs else 0.0,
+        "curr_std_abs": float(np.std(curr_abs)) if currs else 0.0,
+        "curr_range_abs": float(np.max(curr_abs) - np.min(curr_abs)) if currs else 0.0,
+
+        # Missing resistor currents (e.g. resistor replaced by capacitor)
+        "n_missing_currents": n_passive - len(currs),
+        "missing_current_ratio":
+            (n_passive - len(currs)) / max(n_passive, 1),
+
+        "max_deviation_ratio": max_dev,
+        "second_deviation_ratio": second_dev,
+        "deviation_ratio_2nd_over_1st": dev_ratio,
+        "n_components_deviated_over_20pct": float(n_dev_over_20pct),
     }
-
-    # comp_mean/max/min/std mix units (Ω, V, A) — excluded from model input
-    return {k: v for k, v in all_features.items()
-            if k not in ("comp_mean", "comp_max", "comp_min", "comp_std")}
-
-
 class FaultAnalyzer:
     """Runs the trained RandomForest multi-label classifier."""
 

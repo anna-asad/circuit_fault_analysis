@@ -395,11 +395,11 @@ function GroundNode({ data }) {
         xmlns="http://www.w3.org/2000/svg"
       >
         {/* Vertical stem */}
-        <line x1="20" y1="0"  x2="20" y2="10" stroke="#1a1a1a" strokeWidth="2"/>
+        <line x1="20" y1="0"  x2="20" y2="10" stroke="#16a34a" strokeWidth="2"/>
         {/* Three horizontal bars — wide, medium, narrow */}
-        <line x1="4"  y1="10" x2="36" y2="10" stroke="#1a1a1a" strokeWidth="2.5"/>
-        <line x1="10" y1="18" x2="30" y2="18" stroke="#1a1a1a" strokeWidth="2.5"/>
-        <line x1="16" y1="26" x2="24" y2="26" stroke="#1a1a1a" strokeWidth="2.5"/>
+        <line x1="4"  y1="10" x2="36" y2="10" stroke="#0eb294ff" strokeWidth="2.5"/>
+        <line x1="10" y1="18" x2="30" y2="18" stroke="#0eb294ff"  strokeWidth="2.5"/>
+        <line x1="16" y1="26" x2="24" y2="26" stroke="#0eb294ff"  strokeWidth="2.5"/>
       </svg>
     </div>
   );
