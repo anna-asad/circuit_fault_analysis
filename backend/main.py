@@ -217,6 +217,18 @@ async def simulate_circuit(circuit: CircuitModel):
         circuit_dict = circuit.model_dump()
         validator = CircuitValidator()
         is_valid, errors, warnings = validator.validate(circuit_dict)
+
+        floating_node_faults = [w for w in warnings if w.startswith("Floating nodes (single connection):")]
+
+        if floating_node_faults:
+            return SimulationResponse(
+                success=False,
+                netlist=None,
+                structural_faults=warnings,
+                pattern_faults=None,
+                simulation_data=None,
+                error=floating_node_faults[0],
+            )
         
         if not is_valid:
             return SimulationResponse(
@@ -265,6 +277,16 @@ async def simulate_circuit(circuit: CircuitModel):
         # Step 4: Detect structural faults from simulation results
         structural_faults_detected = detect_structural_faults(circuit_dict, sim_result)
         all_structural_faults = warnings + structural_faults_detected
+
+        if structural_faults_detected:
+            return SimulationResponse(
+                success=False,
+                netlist=netlist,
+                structural_faults=all_structural_faults,
+                pattern_faults=None,
+                simulation_data=None,
+                error=structural_faults_detected[0],
+            )
 
         # Step 5: ML pattern fault classification
         # Only run ML model if we have valid voltage/current data

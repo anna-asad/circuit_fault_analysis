@@ -16,6 +16,34 @@ const mlCardClass  = ft =>
 const confClass = c => c >= 0.8 ? 'conf-badge conf-high'
                      : c >= 0.5 ? 'conf-badge conf-mid' : 'conf-badge conf-low';
 
+function formatStructuralFault(fault) {
+  if (/^Floating nodes \(single connection\):/i.test(fault)) {
+    return {
+      title: 'Open Circuit / Unconnected Components',
+      detail: 'Some component terminals are not connected to the rest of the circuit. Please check the component wiring.',
+    };
+  }
+
+  if (/has an unconnected terminal/i.test(fault)) {
+    return {
+      title: 'Open Circuit Detected',
+      detail: 'One or more component terminals are not connected to the circuit. Please check all connections.',
+    };
+  }
+
+  if (/open circuit/i.test(fault)) {
+    return {
+      title: 'Open Circuit Detected',
+      detail: fault,
+    };
+  }
+
+  return {
+    title: 'Structural Fault Detected',
+    detail: fault,
+  };
+}
+
 // ── Single component card ─────────────────────────────────────────────────────
 function ComponentCard({ card }) {
   return (
@@ -109,7 +137,10 @@ function FaultsSection({ structural_faults }) {
       {hasFaults ? (
         <ul className="fault-list">
           {structural_faults.map((f, i) => (
-            <li key={i} className="fault-item fault-warn">{f}</li>
+            <li key={i} className="fault-item fault-warn">
+              <strong>{formatStructuralFault(f).title}</strong>
+              <span>{formatStructuralFault(f).detail}</span>
+            </li>
           ))}
         </ul>
       ) : (

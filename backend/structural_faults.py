@@ -53,6 +53,15 @@ def _build_uf_excluding(circuit_data: Dict, exclude_types: Tuple[str, ...] = ())
     return uf
 
 
+def _get_single_pin_nodes(circuit_data: Dict) -> Set[str]:
+    single_pin_nodes: Set[str] = set()
+    for comp in circuit_data.get("components", []):
+        ns = comp.get("nodes", [])
+        if len(ns) == 1:
+            single_pin_nodes.add(ns[0])
+    return single_pin_nodes
+
+
 class StructuralFaultDetector:
 
     def __init__(self):
@@ -61,6 +70,7 @@ class StructuralFaultDetector:
     def detect_faults(self, circuit_data: Dict, simulation_result: Dict) -> List[str]:
         self.faults = []
         self._check_missing_ground(circuit_data)
+        self._check_unconnected_component_terminals(circuit_data)
         self._check_open_circuits(circuit_data)
         self._check_short_circuits(circuit_data, simulation_result)
         self._check_ammeter_placement(circuit_data)
@@ -82,10 +92,13 @@ class StructuralFaultDetector:
     def _check_open_circuits(self, circuit_data: Dict):
         uf     = _build_uf_excluding(circuit_data, exclude_types=("voltmeter",))
         ground = circuit_data.get("ground", "0")
+        single_pin_nodes = _get_single_pin_nodes(circuit_data)
         for group in uf.get_components():
             if ground in group:
                 continue
             disconnected = sorted(n for n in group if n != ground)
+            if disconnected and all(node in single_pin_nodes for node in disconnected):
+                continue
             if disconnected:
                 self.faults.append(
                     f"Open circuit / broken wire: node(s) {', '.join(disconnected)} "
@@ -95,6 +108,15 @@ class StructuralFaultDetector:
             if comp.get("type") in ("dc_source", "current_source"):
                 if not all(uf.connected(n, ground) for n in comp.get("nodes", [])):
                     self.faults.append(f"Open circuit: source {comp['id']} is not connected to ground.")
+
+    def _check_unconnected_component_terminals(self, circuit_data: Dict):
+        for comp in circuit_data.get("components", []):
+            ctype = comp.get("type")
+            nodes = comp.get("nodes", [])
+            if ctype in ("dc_source", "current_source", "resistor", "capacitor", "inductor") and len(nodes) == 1:
+                self.faults.append(
+                    f"Open circuit: {comp.get('id', 'component')} has an unconnected terminal."
+                )
 
     def _check_short_circuits(self, circuit_data: Dict, simulation_result: Dict):
         if not simulation_result or not simulation_result.get("success"):

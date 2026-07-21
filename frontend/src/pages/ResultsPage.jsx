@@ -3,6 +3,54 @@ import './ResultsPage.css';
 import CircuitCanvas from '../components/CircuitCanvas';
 import { buildAllCards } from '../utils/componentCards';
 
+const STRUCTURAL_STATUS_RULES = [
+  { pattern: /short circuit/i, title: 'Short Circuit' },
+  { pattern: /open circuit/i, title: 'Open Circuit' },
+  { pattern: /ammeter/i, title: 'Ammeter Fault' },
+  { pattern: /voltmeter/i, title: 'Voltmeter Fault' },
+  { pattern: /component bypass/i, title: 'Component Bypass' },
+  { pattern: /reversed polarity/i, title: 'Reversed Polarity' },
+  { pattern: /missing ground reference/i, title: 'Missing Ground' },
+];
+
+function getStructuralStatus(structural_faults) {
+  const firstFault = structural_faults?.[0] ?? '';
+  const rule = STRUCTURAL_STATUS_RULES.find(entry => entry.pattern.test(firstFault));
+
+  return {
+    title: rule?.title ?? 'Structural Fault Detected',
+    subtitle: firstFault,
+  };
+}
+
+function formatStructuralFault(fault) {
+  if (/^Floating nodes \(single connection\):/i.test(fault)) {
+    return {
+      title: 'Open Circuit / Unconnected Components',
+      detail: 'Some component terminals are not connected to the rest of the circuit. Please check the component wiring.',
+    };
+  }
+
+  if (/has an unconnected terminal/i.test(fault)) {
+    return {
+      title: 'Open Circuit Detected',
+      detail: 'One or more component terminals are not connected to the circuit. Please check all connections.',
+    };
+  }
+
+  if (/open circuit/i.test(fault)) {
+    return {
+      title: 'Open Circuit Detected',
+      detail: fault,
+    };
+  }
+
+  return {
+    title: 'Structural Fault Detected',
+    detail: fault,
+  };
+}
+
 // ── ComponentCard ─────────────────────────────────────────────────────────────
 // Single unified card for every component type.
 function ComponentCard({ card }) {
@@ -67,6 +115,30 @@ function ResultsPage({ results, onBack, circuit }) {
   const mlAvailable = !!pattern_faults &&
     !['model_unavailable', 'no_simulation_data'].includes(pattern_faults.fault_type);
   const isAllClear = success && !hasFaults && isNormalML && mlAvailable;
+  const structuralStatus = getStructuralStatus(structural_faults);
+  const firstStructuralFault = structural_faults?.[0] ?? '';
+  const displayStructuralFault = formatStructuralFault(firstStructuralFault);
+  const statusTitle = isAllClear
+    ? 'Everything checks out'
+    : !success
+      ? 'Simulation failed'
+      : hasFaults
+        ? structuralStatus.title
+        : (pattern_faults?.predicted_fault || 'Fault Detected');
+  const statusSubtitle = isAllClear
+    ? 'No structural faults · Circuit operating normally'
+    : !success
+      ? (displayStructuralFault.detail || error || 'Check circuit wiring')
+      : hasFaults
+        ? displayStructuralFault.detail
+        : (pattern_faults?.description ?? '');
+  const statusClass = isAllClear
+    ? 'status-card-success'
+    : !success
+      ? 'status-card-fault'
+      : hasFaults
+        ? 'status-card-fault'
+        : 'status-card-warn';
 
   // Add ground as a pseudo-component so its card shows
   const allComponents = [
@@ -118,26 +190,16 @@ function ResultsPage({ results, onBack, circuit }) {
         <aside className="results-sidebar">
 
           {/* Status banner */}
-          <div className={`status-card ${isAllClear ? 'status-card-success' : success ? 'status-card-warn' : 'status-card-fault'}`}>
+          <div className={`status-card ${statusClass}`}>
             <div className="status-card-icon">
-              {isAllClear ? '✓' : success ? '⚠' : '✕'}
+              {isAllClear ? '✓' : '⚠'}
             </div>
             <div>
               <h3 className="status-card-title">
-                {isAllClear
-                  ? 'Everything checks out'
-                  : !success
-                    ? 'Simulation failed'
-                    : (pattern_faults?.predicted_fault || 'Fault Detected')}
+                {statusTitle}
               </h3>
               <p className="status-card-subtitle">
-                {isAllClear
-                  ? 'No structural faults · Circuit operating normally'
-                  : !success
-                    ? (error ?? 'Check circuit wiring')
-                    : hasFaults
-                      ? structural_faults[0]
-                      : (pattern_faults?.description ?? '')}
+                {statusSubtitle}
               </p>
             </div>
           </div>
@@ -178,7 +240,10 @@ function ResultsPage({ results, onBack, circuit }) {
                 {hasFaults ? (
                   <ul className="fault-list-page">
                     {structural_faults.map((f, i) => (
-                      <li key={i} className="fault-item-page">{f}</li>
+                      <li key={i} className="fault-item-page">
+                        <strong>{formatStructuralFault(f).title}</strong>
+                        <span>{formatStructuralFault(f).detail}</span>
+                      </li>
                     ))}
                   </ul>
                 ) : (

@@ -28,7 +28,7 @@ class ComponentSpec:
         },
         "resistor": {
             "label": "Resistor",
-            "value_min": 1.0,
+            "value_min": 0.0,
             "value_max": 1e6,  # 1 MΩ
             "value_default": 1000.0,
             "unit": "Ω",
@@ -210,6 +210,8 @@ class CircuitValidator:
             actual_terminals = len(comp_nodes)
             
             if actual_terminals != expected_terminals:
+                if expected_terminals == 2 and actual_terminals == 1:
+                    continue
                 self.errors.append(
                     f"Component {comp_id} ({comp_type}): "
                     f"Expected {expected_terminals} terminals, got {actual_terminals}"

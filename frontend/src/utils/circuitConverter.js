@@ -92,11 +92,9 @@ export function convertCircuitToBackendFormat(nodes, edges) {
       }
     });
 
-    if (pins.size < 2) {
-      throw new Error(`${comp.data?.componentId ?? ctype} has only ${pins.size} pin connected — connect both pins.`);
-    }
+    const hasSingleConnectedPin = pins.size < 2;
 
-    if (!isMeter) {
+    if (!hasSingleConnectedPin && !isMeter) {
       const nonGroundEndpoints = [];
       for (const [, neighbors] of pins) {
         const ep = followJunction(comp.id, neighbors[0]);
