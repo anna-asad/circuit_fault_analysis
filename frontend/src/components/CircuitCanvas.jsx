@@ -125,12 +125,12 @@ const NODE_STYLES = {
     fontSize: '11px',
     fontWeight: '600',
     fontFamily: 'monospace',
-    border: '1.5px solid #c0392b',
+    border: 'none',
     whiteSpace: 'pre-line',
     textAlign: 'center',
     minWidth: '80px',
     minHeight: '52px',
-    background: '#fff5f5',
+    background: 'transparent',
     color: '#c0392b',
   },
   // Voltmeter: blue accent border — parallel device
@@ -140,23 +140,17 @@ const NODE_STYLES = {
     fontSize: '11px',
     fontWeight: '600',
     fontFamily: 'monospace',
-    border: '1.5px solid #1a6ab5',
+    border: 'none',
     whiteSpace: 'pre-line',
     textAlign: 'center',
     minWidth: '80px',
     minHeight: '52px',
-    background: '#f0f4ff',
+    background: 'transparent',
     color: '#1a6ab5',
   },
 };
 
-// ── Rotation helpers ──────────────────────────────────────────────────────────
-// Given a component's rotation (0 / 90 / 180 / 270), return the ReactFlow
-// Position for its two logical handles (left-pin and right-pin).
-// At 0°:   left=Left,  right=Right
-// At 90°:  left=Top,   right=Bottom    (rotated clockwise)
-// At 180°: left=Right, right=Left
-// At 270°: left=Bottom,right=Top
+// ── Rotation helpers ─────────────────
 const ROTATION_TO_POSITIONS = {
     0: { left: Position.Left,   right: Position.Right },
    90: { left: Position.Top,    right: Position.Bottom },
@@ -210,9 +204,7 @@ function getNodeStyle(type) {
   return NODE_STYLES.base;
 }
 
-// ── ValueEditor ───────────────────────────────────────────────────────────────
-// Bug 2 fix: onKeyDown stops propagation so Backspace/Delete keystrokes inside
-// this input never bubble up to the canvas-level delete handler.
+// ── ValueEditor ───────────────────────────────────────────────────
 function ValueEditor({ valueDraft, error, onChange, onSave, onCancel }) {
   const stopProp = useCallback((e) => e.stopPropagation(), []);
   return (
@@ -225,8 +217,6 @@ function ValueEditor({ valueDraft, error, onChange, onSave, onCancel }) {
         value={valueDraft}
         onChange={onChange}
         onKeyDown={(e) => {
-          // Always stop propagation so the canvas delete handler never fires
-          // while this input is focused — regardless of which key is pressed.
           e.stopPropagation();
           if (e.key === 'Enter')  onSave();
           if (e.key === 'Escape') onCancel();
@@ -242,9 +232,6 @@ function ValueEditor({ valueDraft, error, onChange, onSave, onCancel }) {
 }
 
 // ── NodeTerminals ─────────────────────────────────────────────────────────────
-// Rotation-aware handles: positions shift with the component's rotation so wires
-// always stay attached to the correct side after a Ctrl+R rotate.
-// Current source uses top/bottom by default (vertical orientation).
 function NodeTerminals({ rotation = 0, componentType }) {
   // Current source has vertical orientation (top/bottom handles)
   if (componentType === 'current_source') {

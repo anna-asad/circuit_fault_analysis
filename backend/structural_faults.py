@@ -153,7 +153,12 @@ class StructuralFaultDetector:
                     )
 
     def _check_ammeter_placement(self, circuit_data: Dict):
-        """Ammeter must be in series: its terminals must have no parallel non-ground path."""
+        """
+        Ammeter validation rules:
+        1. If directly across voltage source with no load → Short circuit
+        2. If not part of any closed loop → Open circuit
+        3. If in series with current source → VALID (measures current source output)
+        """
         all_comps = circuit_data.get("components", [])
         ground    = circuit_data.get("ground", "0")
 
@@ -165,79 +170,130 @@ class StructuralFaultDetector:
             if len(nodes) < 2:
                 continue
             n_plus, n_minus = nodes[0], nodes[1]
-            ammeter_nodes   = set(nodes)
 
-            # Direct parallel: another component shares exactly the same two nodes
-            parallel = [
-                c.get("id", "?") for c in all_comps
-                if c is not ammeter
-                and c.get("type") != "voltmeter"
-                and len(c.get("nodes", [])) >= 2
-                and set(c.get("nodes", [])[:2]) == ammeter_nodes
-            ]
-            if parallel:
-                self.faults.append(
-                    f"Ammeter {aid} must be connected in series, not in parallel. "
-                    f"It shares nodes ({n_plus}, {n_minus}) with {', '.join(parallel)}."
-                )
-                continue
-
-            # Indirect parallel: non-ground path exists without the ammeter
+            # Build loop WITHOUT ammeter to check what exists
             uf = UnionFind()
             for node in circuit_data.get("nodes", []):
                 uf.make_set(node)
+            
+            voltage_sources = []
+            current_sources = []
+            has_load = False
+            
             for comp in all_comps:
-                if comp is ammeter:
+                if comp is ammeter or comp.get("type") == "voltmeter":
                     continue
                 comp_nodes = comp.get("nodes", [])
-                if ground in comp_nodes:
-                    continue
                 if len(comp_nodes) >= 2:
                     uf.union(comp_nodes[0], comp_nodes[1])
-            if uf.connected(n_plus, n_minus):
+                    
+                    # Track what's connected to ammeter terminals
+                    if n_plus in comp_nodes or n_minus in comp_nodes:
+                        if comp.get("type") == "dc_source":
+                            voltage_sources.append(comp.get("id"))
+                        elif comp.get("type") == "current_source":
+                            current_sources.append(comp.get("id"))
+                        elif comp.get("type") in ("resistor", "capacitor", "inductor"):
+                            has_load = True
+            
+            # Check if terminals form closed loop without ammeter
+            terminals_connected_without_ammeter = uf.connected(n_plus, n_minus)
+            both_connected_to_ground = uf.connected(n_plus, ground) and uf.connected(n_minus, ground)
+            
+            # Rule 3: Ammeter with current source is VALID
+            if current_sources:
+                continue
+            
+            # Rule 1: Ammeter directly across voltage source forms short if no load
+            # DEBUG: Print what we found
+            print(f"DEBUG ammeter {aid}: vsources={voltage_sources}, connected={terminals_connected_without_ammeter}, has_load={has_load}")
+            
+            if voltage_sources and terminals_connected_without_ammeter and not has_load:
                 self.faults.append(
-                    f"Ammeter {aid} must be connected in series, not in parallel. "
-                    f"Its terminals ({n_plus}, {n_minus}) are already connected through other components."
+                    f"Short circuit: ammeter {aid} across voltage source with no load."
+                )
+                continue
+            
+            # Rule 2: Ammeter must be in a closed loop
+            if not both_connected_to_ground:
+                self.faults.append(
+                    f"Open circuit: ammeter {aid} not part of a closed loop."
                 )
 
     def _check_voltmeter_placement(self, circuit_data: Dict):
-        """Voltmeter must be in parallel: its terminals must be reachable without it."""
+        """
+        Voltmeter validation rules:
+        1. Both terminals must connect to valid nodes → otherwise floating error
+        2. If across current source with no other current path → open circuit error  
+        3. If in series (only bridge between source and ground) → series error
+        """
         all_comps = circuit_data.get("components", [])
         ground    = circuit_data.get("ground", "0")
+        all_nodes = set(circuit_data.get("nodes", []))
 
         for vm in all_comps:
             if vm.get("type") != "voltmeter":
                 continue
             vid   = vm.get("id", "voltmeter")
             nodes = vm.get("nodes", [])
+            
+            # Rule 1: Check for floating terminals
             if len(nodes) < 2:
+                self.faults.append(
+                    f"Floating voltmeter: {vid} does not have both terminals connected."
+                )
                 continue
+            
             n_plus, n_minus = nodes[0], nodes[1]
-            conductors      = [c for c in all_comps if c is not vm and c.get("type") != "voltmeter"]
-            vm_nodes        = {n_plus, n_minus}
-
-            # Direct bridge: a single component connects the same two nodes
-            if any(set(c.get("nodes", [])[:2]) == vm_nodes for c in conductors):
+            
+            if n_plus not in all_nodes or n_minus not in all_nodes:
+                self.faults.append(
+                    f"Floating voltmeter: {vid} terminal(s) not connected."
+                )
                 continue
-
-            # Indirect parallel: non-ground path connects terminals without voltmeter
+            
+            # Build connectivity WITHOUT voltmeter
             uf = UnionFind()
-            for node in circuit_data.get("nodes", []):
+            for node in all_nodes:
                 uf.make_set(node)
-            for comp in conductors:
-                comp_nodes = comp.get("nodes", [])
-                if ground in comp_nodes:
+            
+            current_sources_in_path = []
+            voltage_sources_in_path = []
+            
+            for comp in all_comps:
+                if comp is vm or comp.get("type") == "voltmeter":
                     continue
+                comp_nodes = comp.get("nodes", [])
                 if len(comp_nodes) >= 2:
                     uf.union(comp_nodes[0], comp_nodes[1])
-            if uf.connected(n_plus, n_minus):
+                    
+                    # Check if this component connects to voltmeter terminals
+                    if n_plus in comp_nodes or n_minus in comp_nodes:
+                        if comp.get("type") == "current_source":
+                            current_sources_in_path.append(comp.get("id"))
+                        elif comp.get("type") == "dc_source":
+                            voltage_sources_in_path.append(comp.get("id"))
+            
+            terminals_connected_without_vm = uf.connected(n_plus, n_minus)
+            
+            # DEBUG
+            print(f"DEBUG voltmeter {vid}: vsources={voltage_sources_in_path}, isources={current_sources_in_path}, connected={terminals_connected_without_vm}")
+            
+            # Rule 2: Current source blocked by voltmeter
+            if current_sources_in_path and not terminals_connected_without_vm:
+                self.faults.append(
+                    f"Open circuit: current source has no path to flow (voltmeter {vid} blocks it)."
+                )
                 continue
-
-            self.faults.append(
-                f"Voltmeter {vid} must be connected in parallel, not in series. "
-                f"Its terminals ({n_plus}, {n_minus}) have no other conducting path — "
-                f"the voltmeter is the only bridge, blocking current flow."
-            )
+            
+            # Rule 3: Voltmeter in series (breaks the circuit path)
+            # If terminals NOT connected without voltmeter AND there's a source in the path
+            if not terminals_connected_without_vm:
+                if voltage_sources_in_path or current_sources_in_path:
+                    self.faults.append(
+                        f"Voltmeter {vid} must be connected in parallel, not in series."
+                    )
+                    continue
 
     def _check_component_bypasses(self, circuit_data: Dict):
         comps = circuit_data.get("components", [])

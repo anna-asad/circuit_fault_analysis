@@ -36,21 +36,25 @@ def _extract_features(
     nominal_lookup:   Dict,
     circuit_data:     Dict = None,
 ) -> Dict[str, float]:
+    """
+    Extract features for ML prediction.
+    
+    IMPORTANT: Feature names and order MUST match train.py's extract_features()
+    exactly. Any mismatch will cause prediction errors.
+    
+    NOTE: comp_mean, comp_std, comp_max, comp_min were removed because they
+    incorrectly mixed different units (ohms, amps, volts, farads, henries)
+    into single meaningless statistics.
+    """
     volts    = list(node_voltages.values())
     currs    = list(branch_currents.values())
     curr_abs = np.abs(currs)
 
-    PASSIVE_TYPES = {"resistor", "capacitor", "inductor"}
-    if circuit_data:
-        n_passive = sum(
-            1 for c in circuit_data.get("components", [])
-            if c.get("type") in PASSIVE_TYPES
-        )
-    else:
-        n_passive = sum(
-            1 for name in component_values
-            if not (name.upper().startswith("V") or name.upper().startswith("I"))
-        )
+    # Match train.py's n_passive calculation exactly
+    n_passive = sum(
+        1 for name in component_values
+        if not (name.upper().startswith("V") or name.upper().startswith("I"))
+    )
 
     nominal, _ = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
 
@@ -66,6 +70,7 @@ def _extract_features(
     dev_ratio  = second_dev / max_dev if max_dev > 0 else 0.0
     n_over_20  = sum(d > 0.20 for d in deviations)
 
+    # CRITICAL: Feature order MUST match train.py exactly
     return {
         "n_components":                     len(component_values),
         "n_nodes":                          len(volts),
@@ -186,6 +191,16 @@ class FaultAnalyzer:
         return self.model_loaded
 
     def _predict(self, features: Dict[str, float]) -> Dict:
+        # Safety check: verify all required features exist
+        missing_features = set(self._feature_cols) - set(features.keys())
+        if missing_features:
+            raise ValueError(
+                f"Feature schema mismatch! Missing features: {sorted(missing_features)}. "
+                f"Expected {len(self._feature_cols)} features but got {len(features)}. "
+                f"This usually means train.py and fault_analyzer.py are out of sync. "
+                f"Re-train the model with: python src/train.py"
+            )
+        
         X = pd.DataFrame([features]).reindex(columns=self._feature_cols, fill_value=0)
 
         proba_per_label = self._clf.predict_proba(X)

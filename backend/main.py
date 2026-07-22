@@ -243,10 +243,16 @@ async def simulate_circuit(circuit: CircuitModel):
         netlist = generate_netlist(circuit_dict)
         
         pre_sim_faults = detect_structural_faults(circuit_dict, simulation_result={})
+        
+        # DEBUG: Log what we're checking
+        print(f"\n=== STRUCTURAL FAULT CHECK ===")
+        print(f"Components: {[(c.get('id'), c.get('type'), c.get('nodes')) for c in circuit_dict.get('components', [])]}")
+        print(f"Pre-sim faults detected: {pre_sim_faults}")
+        print(f"============================\n")
 
         # Separate meter-placement faults (fatal) from everything else (warn).
         meter_faults   = [f for f in pre_sim_faults
-                          if 'Ammeter' in f or 'Voltmeter' in f]
+                          if 'Ammeter' in f or 'Voltmeter' in f or 'ammeter' in f or 'voltmeter' in f]
         non_meter_pre  = [f for f in pre_sim_faults
                           if 'Ammeter' not in f and 'Voltmeter' not in f]
         
