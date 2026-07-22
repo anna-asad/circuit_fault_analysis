@@ -12,7 +12,7 @@ FEATURES_PATH = "models/feature_columns.joblib"
 LABELS_PATH = "models/label_columns.joblib"
 #NOMINAL_LOOKUP_PATH = "models/nominal_lookup.joblib"
 
-LABEL_NAMES = ["drift", "partial_short", "partial_open", "wrong_component_type"]
+LABEL_NAMES = ["partial_short", "partial_open", "wrong_component_type"]
 
 """
 def build_nominal_lookup(df):
@@ -89,7 +89,7 @@ def parse_fault_labels(fault_type, faulted_components):
     kinds = set()
     if fault_type == "normal":
         return kinds
-    if fault_type in ("drift", "partial_short", "partial_open", "wrong_component_type"):
+    if fault_type in ("partial_short", "partial_open", "wrong_component_type"):
         kinds.add(fault_type)
         return kinds
     if fault_type == "multi_fault":
@@ -147,7 +147,6 @@ def main():
 
     print("\n=== Feature Importance ===")
     print(importance)
-
 
     Y_pred = pd.DataFrame(clf.predict(X_test), columns=LABEL_NAMES, index=X_test.index)
 

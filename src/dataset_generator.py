@@ -16,7 +16,6 @@ MANIFEST_ALL_PATH = os.path.join(OUT_ROOT, "manifest.csv")
 SAMPLES_PER_FAULT = 20
 FAULT_TYPES = [
     "normal",
-    "drift",
     "partial_short",
     "partial_open",
     "wrong_component_type",
@@ -356,9 +355,8 @@ def partial_open_value(nominal):
 
 
 FAULT_VALUE_FN = {
-    "drift": drift_value,
     "partial_short": partial_short_value,
-    "partial_open": partial_open_value,
+    "partial_open":  partial_open_value,
 }
 
 
@@ -465,7 +463,7 @@ def make_sample(circuit_name, circuit_def, fault_type, sample_index, folder):
     if fault_type == "normal":
         pass
 
-    elif fault_type in ("drift", "partial_short", "partial_open"):
+    elif fault_type in ("partial_short", "partial_open"):
         target = random.choice(r_names)
         override[target] = FAULT_VALUE_FN[fault_type](elements[target]["value"])
         faulted_components.append(target)

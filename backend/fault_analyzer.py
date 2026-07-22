@@ -1,6 +1,5 @@
-"""Fault Analyzer — RandomForest multi-label classifier."""
+"""Fault Analyzer — RandomForest multi-label classifier + rule-based drift warnings."""
 
-import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -26,19 +25,21 @@ except ImportError:
 ML_MODEL_AVAILABLE = _ML_IMPORTS_OK and all(f.exists() for f in REQUIRED_FILES.values())
 THRESHOLD = 0.5
 
+# Component value drifted more than this from nominal → emit a warning
+DRIFT_WARNING_THRESHOLD = 0.20
+
+
 def _extract_features(
     component_values: Dict[str, float],
-    node_voltages: Dict[str, float],
-    branch_currents: Dict[str, float],
-    nominal_lookup: Dict,
-    circuit_data: Dict = None,
+    node_voltages:    Dict[str, float],
+    branch_currents:  Dict[str, float],
+    nominal_lookup:   Dict,
+    circuit_data:     Dict = None,
 ) -> Dict[str, float]:
-
-    volts = list(node_voltages.values())
-    currs = list(branch_currents.values())
+    volts    = list(node_voltages.values())
+    currs    = list(branch_currents.values())
     curr_abs = np.abs(currs)
 
-    # Count passive components
     PASSIVE_TYPES = {"resistor", "capacitor", "inductor"}
     if circuit_data:
         n_passive = sum(
@@ -51,12 +52,7 @@ def _extract_features(
             if not (name.upper().startswith("V") or name.upper().startswith("I"))
         )
 
-    # Map user circuit to nominal values
-    nominal, _ = map_to_nominal_values(
-        component_values,
-        nominal_lookup,
-        circuit_data,
-    )
+    nominal, _ = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
 
     deviations = []
     for name, val in component_values.items():
@@ -65,38 +61,75 @@ def _extract_features(
             deviations.append(abs(val - nom) / abs(nom))
 
     deviations_sorted = sorted(deviations, reverse=True)
-
-    max_dev = deviations_sorted[0] if deviations_sorted else 0.0
+    max_dev    = deviations_sorted[0] if deviations_sorted else 0.0
     second_dev = deviations_sorted[1] if len(deviations_sorted) > 1 else 0.0
-    dev_ratio = second_dev / max_dev if max_dev > 0 else 0.0
-    n_dev_over_20pct = sum(d > 0.20 for d in deviations)
+    dev_ratio  = second_dev / max_dev if max_dev > 0 else 0.0
+    n_over_20  = sum(d > 0.20 for d in deviations)
 
     return {
-        "n_components": len(component_values),
-
-        "n_nodes": len(volts),
-        "volt_mean": float(np.mean(volts)) if volts else 0.0,
-        "volt_max": float(np.max(volts)) if volts else 0.0,
-        "volt_min": float(np.min(volts)) if volts else 0.0,
-        "volt_std": float(np.std(volts)) if volts else 0.0,
-        "volt_range": float(np.max(volts) - np.min(volts)) if volts else 0.0,
-
-        "n_currents": len(currs),
-        "curr_mean_abs": float(np.mean(curr_abs)) if currs else 0.0,
-        "curr_max_abs": float(np.max(curr_abs)) if currs else 0.0,
-        "curr_std_abs": float(np.std(curr_abs)) if currs else 0.0,
-        "curr_range_abs": float(np.max(curr_abs) - np.min(curr_abs)) if currs else 0.0,
-
-        # Missing resistor currents (e.g. resistor replaced by capacitor)
-        "n_missing_currents": n_passive - len(currs),
-        "missing_current_ratio":
-            (n_passive - len(currs)) / max(n_passive, 1),
-
-        "max_deviation_ratio": max_dev,
-        "second_deviation_ratio": second_dev,
-        "deviation_ratio_2nd_over_1st": dev_ratio,
-        "n_components_deviated_over_20pct": float(n_dev_over_20pct),
+        "n_components":                     len(component_values),
+        "n_nodes":                          len(volts),
+        "volt_mean":                        float(np.mean(volts))         if volts else 0.0,
+        "volt_max":                         float(np.max(volts))          if volts else 0.0,
+        "volt_min":                         float(np.min(volts))          if volts else 0.0,
+        "n_currents":                       len(currs),
+        "curr_mean_abs":                    float(np.mean(curr_abs))      if currs else 0.0,
+        "curr_max_abs":                     float(np.max(curr_abs))       if currs else 0.0,
+        "volt_std":                         float(np.std(volts))          if volts else 0.0,
+        "volt_range":                       float(np.max(volts) - np.min(volts)) if volts else 0.0,
+        "curr_std_abs":                     float(np.std(curr_abs))       if currs else 0.0,
+        "curr_range_abs":                   float(np.max(curr_abs) - np.min(curr_abs)) if currs else 0.0,
+        "missing_current_ratio":            (n_passive - len(currs)) / max(n_passive, 1),
+        "n_missing_currents":               n_passive - len(currs),
+        "max_deviation_ratio":              max_dev,
+        "second_deviation_ratio":           second_dev,
+        "deviation_ratio_2nd_over_1st":     dev_ratio,
+        "n_components_deviated_over_20pct": float(n_over_20),
     }
+
+
+def _compute_drift_warnings(
+    component_values: Dict[str, float],
+    nominal_lookup:   Dict,
+    circuit_data:     Dict = None,
+) -> List[Dict]:
+    """
+    Rule-based drift detection.
+    Compares each component's actual value against its nominal value from the
+    topology lookup and returns a list of warning dicts for any component whose
+    deviation exceeds DRIFT_WARNING_THRESHOLD (default 20%).
+
+    Returns a list of:
+        { component_id, actual, nominal, deviation_pct, message }
+    Empty list if no topology match is available or no component has drifted.
+    """
+    nominal, _ = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
+    if not nominal:
+        return []
+
+    warnings = []
+    for comp_id, actual in component_values.items():
+        nom = nominal.get(comp_id)
+        if not nom or nom == 0:
+            continue
+        deviation = (actual - nom) / abs(nom)
+        if abs(deviation) >= DRIFT_WARNING_THRESHOLD:
+            pct = deviation * 100
+            direction = "higher" if pct > 0 else "lower"
+            warnings.append({
+                "component_id":  comp_id,
+                "actual":        actual,
+                "nominal":       nom,
+                "deviation_pct": round(abs(pct), 1),
+                "message": (
+                    f"{comp_id} has drifted {abs(pct):.1f}% {direction} than its "
+                    f"nominal value (actual: {actual:.4g}, nominal: {nom:.4g})."
+                ),
+            })
+
+    return sorted(warnings, key=lambda w: w["deviation_pct"], reverse=True)
+
+
 class FaultAnalyzer:
     """Runs the trained RandomForest multi-label classifier."""
 
@@ -126,20 +159,28 @@ class FaultAnalyzer:
         ground = circuit_data.get("ground", "0")
         signal_voltages = {k: v for k, v in node_voltages.items() if k != ground}
 
+        # Rule-based drift warnings (independent of ML)
+        drift_warnings = _compute_drift_warnings(
+            component_values, self._nominal_lookup, circuit_data
+        )
+
         try:
             features = _extract_features(
                 component_values, signal_voltages, branch_currents,
                 self._nominal_lookup, circuit_data,
             )
-            return self._predict(features)
+            result = self._predict(features)
         except Exception as exc:
-            return {
+            result = {
                 "predicted_fault": "Error",
                 "confidence": 0.0,
                 "all_probabilities": {},
                 "fault_type": "prediction_error",
                 "description": f"Prediction error: {exc}",
             }
+
+        result["drift_warnings"] = drift_warnings
+        return result
 
     def is_model_loaded(self) -> bool:
         return self.model_loaded
@@ -179,7 +220,6 @@ class FaultAnalyzer:
     def _describe(fault_type: str, fired: List[str]) -> str:
         descriptions = {
             "Normal":               "Circuit operating within normal parameters.",
-            "drift":                "Component value drift detected (20–70% off nominal).",
             "partial_short":        "Partial short circuit detected (1–15% of nominal resistance).",
             "partial_open":         "Partial open circuit detected (5–50× nominal resistance).",
             "wrong_component_type": "Wrong component type — electrical behaviour doesn't match the schematic.",
@@ -198,4 +238,5 @@ class FaultAnalyzer:
             "all_probabilities": {},
             "fault_type": "model_unavailable",
             "description": "ML model not loaded. Install dependencies and run: python src/train.py",
+            "drift_warnings": [],
         }

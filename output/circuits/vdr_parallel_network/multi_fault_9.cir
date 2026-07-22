@@ -1,0 +1,13 @@
+vdr_parallel_network - fault test
+I1 0 T DC 0.012
+R1 T 0 377.413718
+R2 T 0 313293.232451
+R3 T 0 12025.759562
+.op
+.control
+run
+print v(T)
+print @r1[i] @r2[i] @r3[i]
+print @i1[i]
+.endc
+.end

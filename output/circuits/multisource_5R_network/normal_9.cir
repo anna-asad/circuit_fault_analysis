@@ -1,0 +1,17 @@
+multisource_5R_network - fault test
+V1 A 0 DC 10
+V2 B 0 DC 15
+I1 0 C DC 5
+R1 A 0 2029.36088
+R2 A B 1990.451359
+R3 A C 1005.079953
+R4 B C 1489.464669
+R5 C 0 3939.653805
+.op
+.control
+run
+print v(A) v(B) v(C)
+print @r1[i] @r2[i] @r3[i] @r4[i] @r5[i]
+print @i1[i]
+.endc
+.end

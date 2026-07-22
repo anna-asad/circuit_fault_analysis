@@ -318,10 +318,11 @@ async def simulate_circuit(circuit: CircuitModel):
             structural_faults=all_structural_faults,
             pattern_faults=pattern_faults,
             simulation_data={
-                "voltages":   voltages,
-                "currents":   currents,
-                "components": circuit_dict.get("components", []),
-                "meters":     circuit_dict.get("meters", []),
+                "voltages":       voltages,
+                "currents":       currents,
+                "components":     circuit_dict.get("components", []),
+                "meters":         circuit_dict.get("meters", []),
+                "drift_warnings": pattern_faults.get("drift_warnings", []) if pattern_faults else [],
             },
             error=None
         )

@@ -1,0 +1,14 @@
+wheatstone_bridge - fault test
+V1 pos 0 DC 20
+R1 pos mid1 98.723944
+R3 mid1 0 28.725016
+R2 pos mid2 150.961559
+R4 mid2 0 304.383214
+Rg mid1 mid2 392.846581
+.op
+.control
+run
+print v(mid1) v(mid2) v(pos)
+print @r1[i] @r3[i] @r2[i] @r4[i] @rg[i]
+.endc
+.end

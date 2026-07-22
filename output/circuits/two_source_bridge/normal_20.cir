@@ -1,0 +1,15 @@
+two_source_bridge - fault test
+V1 p1 0 DC 15
+V2 p2 0 DC 10
+R1 p1 mid1 100.184381
+R3 mid1 0 147.387551
+R2 p2 mid2 198.648008
+R4 mid2 0 248.893899
+R5 mid1 mid2 74.105935
+.op
+.control
+run
+print v(mid1) v(mid2) v(p1) v(p2)
+print @r1[i] @r3[i] @r2[i] @r4[i] @r5[i]
+.endc
+.end

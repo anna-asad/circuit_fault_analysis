@@ -335,3 +335,30 @@
   }
   .results-sidebar { max-height: 50vh; }
 }
+
+/* ── Drift warnings (results page) ──────────────────────────────────────── */
+.drift-item-page {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  background: #fefce8;
+  border-left: 3px solid #ca8a04;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #78350f;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+.drift-comp-page {
+  font-family: monospace;
+  font-size: 11px;
+  color: #92400e;
+}
+.drift-note-page {
+  font-size: 10px;
+  color: #a16207;
+  font-style: italic;
+  padding: 4px 12px 8px;
+  margin: 0;
+}

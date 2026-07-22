@@ -1,0 +1,12 @@
+current_source_voltage_divider - fault test
+I1 0 out DC 0.01
+R1 out 0 1016.089954
+R2 out 0 2035.438931
+.op
+.control
+run
+print v(out)
+print @r1[i] @r2[i]
+print @i1[i]
+.endc
+.end

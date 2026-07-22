@@ -1,0 +1,13 @@
+delta_loaded_network - fault test
+Vin A 0 DC 12
+Ra A B 0.370716
+Rb B C 29.407093
+Rc C A 29.886514
+Rload B 0 30.027615
+.op
+.control
+run
+print v(A) v(B) v(C)
+print @ra[i] @rb[i] @rc[i] @rload[i]
+.endc
+.end

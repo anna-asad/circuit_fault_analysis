@@ -1,0 +1,14 @@
+current_source_t_network - fault test
+I1 0 a DC 0.005
+R_s a b 503.575555
+R_p b 0 37631.519182
+R_L b c 1484.761797
+R_leak c 0 9903014.992437
+.op
+.control
+run
+print v(a) v(b) v(c)
+print @r_s[i] @r_p[i] @r_l[i] @r_leak[i]
+print @i1[i]
+.endc
+.end

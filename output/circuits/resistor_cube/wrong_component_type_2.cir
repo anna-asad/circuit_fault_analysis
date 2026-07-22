@@ -1,0 +1,21 @@
+resistor_cube - fault test
+V1 n7 0 DC 12
+R1 0 n1 0.987607
+R2 0 n2 1.004177
+C3 0 n4 3.15e-06
+R4 n1 n3 0.994364
+R5 n1 n5 1.001475
+R6 n2 n3 0.991079
+R7 n2 n6 1.013391
+R8 n3 n7 0.983684
+R9 n4 n5 0.994299
+R10 n4 n6 0.981603
+R11 n5 n7 0.993163
+R12 n6 n7 1.018405
+.op
+.control
+run
+print v(n1) v(n2) v(n3) v(n4) v(n5) v(n6) v(n7)
+print @r1[i] @r2[i] @r4[i] @r5[i] @r6[i] @r7[i] @r8[i] @r9[i] @r10[i] @r11[i] @r12[i]
+.endc
+.end

@@ -1,0 +1,15 @@
+r_ladder_circuit - fault test
+Vin in 0 DC 24
+R1 in n1 10.12377
+C2 n1 0 7.48e-06
+R3 n1 n2 10.101528
+R4 n2 0 19.906864
+R5 n2 n3 10.175298
+R6 n3 0 20.07438
+.op
+.control
+run
+print v(in) v(n1) v(n2) v(n3)
+print @r1[i] @r3[i] @r4[i] @r5[i] @r6[i]
+.endc
+.end

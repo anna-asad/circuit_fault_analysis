@@ -4,9 +4,11 @@ import { buildAllCards } from '../utils/componentCards';
 
 // ── ML helpers ────────────────────────────────────────────────────────────────
 const LABEL_DISPLAY = {
-  drift: 'Value Drift', partial_short: 'Partial Short',
-  partial_open: 'Partial Open', wrong_component_type: 'Wrong Component',
-  Normal: 'Normal', Multiple_Faults: 'Multiple Faults',
+  partial_short: 'Partial Short',
+  partial_open: 'Partial Open',
+  wrong_component_type: 'Wrong Component',
+  Normal: 'Normal',
+  Multiple_Faults: 'Multiple Faults',
 };
 const displayLabel = raw => LABEL_DISPLAY[raw] ?? String(raw).replace(/_/g, ' ');
 const mlCardClass  = ft =>
@@ -106,6 +108,27 @@ function MlSection({ pattern_faults }) {
   );
 }
 
+// ── Drift warnings section ────────────────────────────────────────────────────
+function DriftWarningsSection({ drift_warnings }) {
+  if (!drift_warnings || drift_warnings.length === 0) return null;
+  return (
+    <section className="result-section">
+      <h4 className="section-title">⚠ Value Drift Detected</h4>
+      <ul className="drift-list">
+        {drift_warnings.map((w, i) => (
+          <li key={i} className="drift-item">
+            <span className="drift-comp">{w.component_id}</span>
+            <span className="drift-msg">{w.message}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="drift-note">
+        These are informational only — value drift does not affect the ML classification.
+      </p>
+    </section>
+  );
+}
+
 // ── Component cards section (shared) ─────────────────────────────────────────
 function CardsSection({ components, voltages, currents, meters }) {
   const allComponents = [
@@ -172,10 +195,11 @@ function ResultsPanel({ results }) {
   }
 
   const { success, simulation_data, structural_faults, pattern_faults, error } = results;
-  const voltages   = { '0': 0, ...(simulation_data?.voltages ?? {}) };
-  const currents   = simulation_data?.currents   ?? {};
-  const meters     = simulation_data?.meters     ?? [];
-  const components = simulation_data?.components ?? [];
+  const voltages      = { '0': 0, ...(simulation_data?.voltages ?? {}) };
+  const currents      = simulation_data?.currents       ?? {};
+  const meters        = simulation_data?.meters         ?? [];
+  const components    = simulation_data?.components     ?? [];
+  const driftWarnings = simulation_data?.drift_warnings ?? [];
 
   const hasFaults   = structural_faults?.length > 0;
   const isNormalML  = String(pattern_faults?.predicted_fault ?? '').toLowerCase() === 'normal';
@@ -237,6 +261,7 @@ function ResultsPanel({ results }) {
                 currents={currents}
                 meters={meters}
               />
+              <DriftWarningsSection drift_warnings={driftWarnings} />
               <FaultsSection structural_faults={structural_faults} />
               <MlSection pattern_faults={pattern_faults} />
             </div>
@@ -257,6 +282,7 @@ function ResultsPanel({ results }) {
           currents={currents}
           meters={meters}
         />
+        <DriftWarningsSection drift_warnings={driftWarnings} />
         <FaultsSection structural_faults={structural_faults} />
         <MlSection pattern_faults={pattern_faults} />
       </div>

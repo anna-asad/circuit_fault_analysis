@@ -1,0 +1,13 @@
+series_parallel_R1R2R3R4 - fault test
+Vin in 0 DC 10
+R1 in a 1004.664141
+R2 a b 60220.801605
+R3 a b 2967.225398
+R4 b 0 1509.439345
+.op
+.control
+run
+print v(a) v(b) v(in)
+print @r1[i] @r2[i] @r3[i] @r4[i]
+.endc
+.end

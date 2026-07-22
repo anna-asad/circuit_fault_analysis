@@ -1,0 +1,11 @@
+voltage_divider_12k_9k - fault test
+Vs s 0 DC 7.0
+R1 s o 11984.31033
+R2 o 0 90519.853561
+.op
+.control
+run
+print v(o) v(s)
+print @r1[i] @r2[i]
+.endc
+.end

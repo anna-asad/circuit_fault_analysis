@@ -105,10 +105,11 @@ function ResultsPage({ results, onBack, circuit }) {
   }
 
   const { success, simulation_data, structural_faults, pattern_faults, error } = results;
-  const voltages   = { '0': 0, ...(simulation_data?.voltages ?? {}) };
-  const currents   = simulation_data?.currents   ?? {};
-  const meters     = simulation_data?.meters     ?? [];
-  const components = simulation_data?.components ?? [];
+  const voltages      = { '0': 0, ...(simulation_data?.voltages ?? {}) };
+  const currents      = simulation_data?.currents       ?? {};
+  const meters        = simulation_data?.meters         ?? [];
+  const components    = simulation_data?.components     ?? [];
+  const driftWarnings = simulation_data?.drift_warnings ?? [];
 
   const hasFaults  = structural_faults?.length > 0;
   const isNormalML = String(pattern_faults?.predicted_fault ?? '').toLowerCase() === 'normal';
@@ -157,7 +158,7 @@ function ResultsPage({ results, onBack, circuit }) {
       : 'ml-card-page ml-card-page-fault';
 
   const LABEL_DISPLAY = {
-    drift: 'Value Drift', partial_short: 'Partial Short',
+    partial_short: 'Partial Short',
     partial_open: 'Partial Open', wrong_component_type: 'Wrong Component',
     Normal: 'Normal', Multiple_Faults: 'Multiple Faults',
   };
@@ -222,6 +223,28 @@ function ResultsPage({ results, onBack, circuit }) {
                   ))}
                 </div>
               )}
+            </section>
+          )}
+
+          {/* ── Drift warnings ── */}
+          {success && driftWarnings.length > 0 && (
+            <section className="data-section">
+              <div className="data-section-header" style={{ cursor: 'default' }}>
+                <span className="data-section-title">⚠ Value Drift Detected</span>
+              </div>
+              <div className="data-section-content">
+                <ul className="fault-list-page">
+                  {driftWarnings.map((w, i) => (
+                    <li key={i} className="drift-item-page">
+                      <strong className="drift-comp-page">{w.component_id}</strong>
+                      <span>{w.message}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="drift-note-page">
+                  Informational only — does not affect the ML classification.
+                </p>
+              </div>
             </section>
           )}
 

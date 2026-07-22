@@ -1,0 +1,14 @@
+kvl_series_loop_ABCDEF - fault test
+C_FA 0 A 7.6e-06
+R_AB A B 6077.248808
+R_BC B C 11877.443607
+V_CD C D DC 24
+R_DE D E 4004.331402
+V_EF E 0 DC 6
+.op
+.control
+run
+print v(A) v(B) v(C) v(D) v(E)
+print @r_ab[i] @r_bc[i] @r_de[i]
+.endc
+.end

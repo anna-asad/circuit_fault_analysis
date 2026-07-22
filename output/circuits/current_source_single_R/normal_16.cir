@@ -1,0 +1,11 @@
+current_source_single_R - fault test
+I1 0 p DC 0.012
+Rx p 0 419.210597
+.op
+.control
+run
+print v(p)
+print @rx[i]
+print @i1[i]
+.endc
+.end
