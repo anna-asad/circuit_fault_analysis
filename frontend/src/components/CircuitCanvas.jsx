@@ -233,31 +233,54 @@ function ValueEditor({ valueDraft, error, onChange, onSave, onCancel }) {
 
 // ── NodeTerminals ─────────────────────────────────────────────────────────────
 function NodeTerminals({ rotation = 0, componentType }) {
-  // Current source has vertical orientation (top/bottom handles)
-  if (componentType === 'current_source') {
-    // For current source: "left" handle is at top, "right" handle is at bottom
-    // Rotation still applies the same mapping, but starting from vertical
-    const CURRENT_SOURCE_POSITIONS = {
-        0: { left: Position.Top,    right: Position.Bottom },
-       90: { left: Position.Right,  right: Position.Left },
+  const normalizedRotation = ((rotation % 360) + 360) % 360;
+
+  if (componentType === 'current_source'|| componentType === 'currentSource') {
+    const currentSourcePositions = {
+      0: { left: Position.Top,    right: Position.Bottom },
+      90: { left: Position.Right, right: Position.Left },
       180: { left: Position.Bottom, right: Position.Top },
-      270: { left: Position.Left,   right: Position.Right },
+      270: { left: Position.Left, right: Position.Right },
     };
-    const positions = CURRENT_SOURCE_POSITIONS[((rotation % 360) + 360) % 360] ?? CURRENT_SOURCE_POSITIONS[0];
+    const positions = currentSourcePositions[normalizedRotation] ?? currentSourcePositions[0];
+
     return (
       <>
-        <Handle type="source" position={positions.left}  id="left"  className="circuit-handle" />
-        <Handle type="source" position={positions.right} id="right" className="circuit-handle" />
+        <Handle
+          key={`${componentType}-${normalizedRotation}-left`}
+          type="source"
+          position={positions.left}
+          id="left"
+          className="circuit-handle"
+        />
+        <Handle
+          key={`${componentType}-${normalizedRotation}-right`}
+          type="source" 
+          position={positions.right}
+          id="right"
+          className="circuit-handle"
+        />
       </>
     );
   }
-  
-  // All other components use horizontal orientation (left/right handles)
-  const { left, right } = getHandlePositions(rotation);
+
+  const { left, right } = getHandlePositions(normalizedRotation);
   return (
     <>
-      <Handle type="source" position={left}  id="left"  className="circuit-handle" />
-      <Handle type="source" position={right} id="right" className="circuit-handle" />
+      <Handle
+        key={`${componentType}-${normalizedRotation}-left`}
+        type="source"
+        position={left}
+        id="left"
+        className="circuit-handle"
+      />
+      <Handle
+        key={`${componentType}-${normalizedRotation}-right`}
+        type="source"
+        position={right}
+        id="right"
+        className="circuit-handle"
+      />
     </>
   );
 }
@@ -266,19 +289,25 @@ function NodeTerminals({ rotation = 0, componentType }) {
 function ComponentNode({ id, data, mode }) {
   const rotation = data.rotation ?? 0;
   
-  // Determine if the component is in a vertical orientation
-  // - Current source: vertical at 0°/180°, horizontal at 90°/270°
-  // - Other components: horizontal at 0°/180°, vertical at 90°/270°
+  // For current_source the native orientation is vertical (SVG viewBox is portrait).
+  // isVertical = true  → component is in its natural portrait orientation (0°/180°)
+  // isVertical = false → component has been rotated to landscape (90°/270°)
+  // For all other components the native orientation is horizontal.
   const isVertical = data.componentType === 'current_source'
     ? (rotation === 0 || rotation === 180)
     : (rotation === 90 || rotation === 270);
-  
-  // Compute the outer box style with swapped dimensions
+
+  // Box dimensions: always make the longer side match the component's lead axis.
+  // current_source native: minWidth='60px' (narrow), minHeight='90px' (tall).
+  // At 0°/180° (portrait): width=60, height=90.
+  // At 90°/270° (landscape): swap → width=90, height=60.
+  const nativeW = data.style?.minWidth  || '80px';
+  const nativeH = data.style?.minHeight || '52px';
   const nodeStyle = {
     ...data.style,
-    width: isVertical ? (data.style?.minHeight || '52px') : (data.style?.minWidth || '80px'),
-    height: isVertical ? (data.style?.minWidth || '80px') : (data.style?.minHeight || '52px'),
-    minWidth: undefined,  // clear minWidth/minHeight to use explicit width/height
+    width:     isVertical ? nativeW : nativeH,
+    height:    isVertical ? nativeH : nativeW,
+    minWidth:  undefined,
     minHeight: undefined,
   };
 
@@ -291,6 +320,15 @@ function ComponentNode({ id, data, mode }) {
     height: isVertical ? '100%' : '32px',
   };
 
+  const currentSourceContentStyle = data.componentType === 'current_source' ? {
+    transform: `rotate(${rotation}deg)`,
+    transformOrigin: 'center center',
+    transition: 'transform 0.15s ease',
+    position: 'relative',
+    width: '100%',
+    height: '100%',
+  } : undefined;
+
   // Apply compact styling for vertical orientation
   const valueButtonStyle = isVertical ? { fontSize: '9px', maxWidth: '100%' } : {};
   const labelStyle = isVertical ? { fontSize: '9px', maxWidth: '100%' } : {};
@@ -298,11 +336,13 @@ function ComponentNode({ id, data, mode }) {
   if (mode === 'results') {
     return (
       <div className="circuit-node circuit-node-component" style={nodeStyle}>
-        <NodeTerminals rotation={rotation} componentType={data.componentType} />
         <div className="circuit-node-content component-content">
-          <div className="component-visual-container" style={visualContainerStyle}>
-            <div className="component-svg-fallback visible">
-              {COMPONENT_SVGS[data.componentType]}
+          <div style={data.componentType === 'current_source' ? currentSourceContentStyle : undefined}>
+            <NodeTerminals rotation={rotation} componentType={data.componentType} />
+            <div className="component-visual-container" style={data.componentType === 'current_source' ? undefined : visualContainerStyle}>
+              <div className="component-svg-fallback visible">
+                {COMPONENT_SVGS[data.componentType]}
+              </div>
             </div>
           </div>
         </div>
@@ -314,14 +354,16 @@ function ComponentNode({ id, data, mode }) {
 
   return (
     <div className="circuit-node circuit-node-component" style={nodeStyle}>
-      <NodeTerminals rotation={rotation} componentType={componentType} />
       <div className="circuit-node-content component-content">
         {/* Component reference label (R1, C2, V1 …) — stacking context ensures visibility */}
         <div className="component-ref-label" style={labelStyle}>{label}</div>
-        {/* SVG symbol rotates; container becomes portrait box at 90°/270° */}
-        <div className="component-visual-container" style={visualContainerStyle}>
-          <div className="component-svg-fallback visible">
-            {COMPONENT_SVGS[componentType]}
+        <div style={componentType === 'current_source' ? currentSourceContentStyle : undefined}>
+          <NodeTerminals rotation={rotation} componentType={componentType} />
+          {/* SVG symbol rotates; container becomes portrait box at 90°/270° */}
+          <div className="component-visual-container" style={componentType === 'current_source' ? undefined : visualContainerStyle}>
+            <div className="component-svg-fallback visible">
+              {COMPONENT_SVGS[componentType]}
+            </div>
           </div>
         </div>
         {isEditing ? (

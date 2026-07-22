@@ -158,7 +158,7 @@ class FaultAnalyzer:
         component_values: Dict[str, float] = {}
         for comp in circuit_data.get("components", []):
             ctype = comp.get("type", "")
-            if ctype in ("resistor", "capacitor", "inductor", "dc_source", "current_source"):
+            if ctype in ("resistor", "capacitor", "inductor", "current_source"):
                 component_values[comp.get("id", "")] = float(comp.get("value", 0))
 
         ground = circuit_data.get("ground", "0")
