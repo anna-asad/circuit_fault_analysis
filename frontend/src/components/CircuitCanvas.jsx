@@ -653,28 +653,55 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
 
       setEdges(eds => {
         const filtered = eds.filter(e => e.id !== nearestEdge.id);
+        
+        // Preserve the original edge style
+        const originalStyle = nearestEdge.style || WIRE_STYLE;
+        const originalType = nearestEdge.type || 'smoothstep';
+        
+        // Smart handle assignment: determine which junction handles to use
+        // based on the geometry to minimize wire rerouting
+        const srcNode = nodes.find(n => n.id === nearestEdge.source);
+        const tgtNode = nodes.find(n => n.id === nearestEdge.target);
+        const srcPos = getHandlePos(srcNode, nearestEdge.sourceHandle);
+        const tgtPos = getHandlePos(tgtNode, nearestEdge.targetHandle);
+        
+        // Junction is between source and target - use handles that align with wire direction
+        const isHorizontal = Math.abs(tgtPos.x - srcPos.x) > Math.abs(tgtPos.y - srcPos.y);
+        const junctionToSrcHandle = isHorizontal 
+          ? (srcPos.x < jx ? 'left' : 'right')
+          : (srcPos.y < jy ? 'top' : 'bottom');
+        const junctionToTgtHandle = isHorizontal
+          ? (tgtPos.x > jx ? 'right' : 'left')
+          : (tgtPos.y > jy ? 'bottom' : 'top');
+        
+        // For the connecting component: use the opposite direction
+        const availableJunctionHandles = ['left', 'right', 'top', 'bottom'].filter(
+          h => h !== junctionToSrcHandle && h !== junctionToTgtHandle
+        );
+        const connectingJunctionHandle = availableJunctionHandles[0] || 'bottom';
+        
         return [
           ...filtered,
-          // Segment 1: original source → junction
+          // Segment 1: original source → junction (preserve original edge properties)
           {
             id:           `e_${nearestEdge.source}_${junctionId}_${Date.now()}`,
             source:       nearestEdge.source,
             sourceHandle: nearestEdge.sourceHandle,
             target:       junctionId,
-            targetHandle: 'left',
-            type:         'smoothstep',
-            style:        WIRE_STYLE,
+            targetHandle: junctionToSrcHandle,
+            type:         originalType,
+            style:        originalStyle,
             ...WIRE_OPTS,
           },
-          // Segment 2: junction → original target
+          // Segment 2: junction → original target (preserve original edge properties)
           {
             id:           `e_${junctionId}_${nearestEdge.target}_${Date.now()}`,
             source:       junctionId,
-            sourceHandle: 'right',
+            sourceHandle: junctionToTgtHandle,
             target:       nearestEdge.target,
             targetHandle: nearestEdge.targetHandle,
-            type:         'smoothstep',
-            style:        WIRE_STYLE,
+            type:         originalType,
+            style:        originalStyle,
             ...WIRE_OPTS,
           },
           // New wire: connecting component → junction
@@ -683,7 +710,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
             source:       startNodeId,
             sourceHandle: connectingHandle,
             target:       junctionId,
-            targetHandle: 'bottom',
+            targetHandle: connectingJunctionHandle,
             type:         'smoothstep',
             style:        isGroundNode ? GND_WIRE_STYLE : WIRE_STYLE,
             ...WIRE_OPTS,
