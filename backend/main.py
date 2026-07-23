@@ -150,7 +150,7 @@ async def get_components():
             "type": "resistor",
             "label": "Resistor",
             "icon": "♒",
-            "value_range": {"min": 1, "max": 1e6, "default": 1000},
+            "value_range": {"min": 1, "max": 1e8, "default": 1000},
             "unit": "Ω",
             "description": "Resistor component"
         },
