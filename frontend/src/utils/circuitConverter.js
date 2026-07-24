@@ -245,11 +245,18 @@ export function convertCircuitToBackendFormat(nodes, edges) {
       return;
     }
 
-    components.push({
+    const componentData = {
       id: cleanId, type: ctype,
       value: compNode.data?.value || getDefaultValue(ctype),
       nodes: elecNodes, position: compNode.position, rotation,
-    });
+    };
+    
+    // Add state for switches
+    if (ctype === 'switch') {
+      componentData.state = compNode.data?.state || 'open';
+    }
+    
+    components.push(componentData);
   });
 
   const nonMeters = components.filter(c => !meterTypes.includes(c.type));
@@ -263,5 +270,6 @@ export function convertCircuitToBackendFormat(nodes, edges) {
 
 function getDefaultValue(type) {
   return { dc_source: 5.0, current_source: 0.012, resistor: 1000,
-           capacitor: 1e-7, inductor: 1e-6, ammeter: 0, voltmeter: 1e9 }[type] ?? 0;
+           capacitor: 1e-7, inductor: 1e-6, ammeter: 0, voltmeter: 1e9, 
+           switch: 0, bulb: 240 }[type] ?? 0;
 }

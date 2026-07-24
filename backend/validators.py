@@ -81,6 +81,25 @@ class ComponentSpec:
             "requires_two_terminals": True,
             "terminals": 2,
             "measurement_device": True
+        },
+        "switch": {
+            "label": "Switch",
+            "value_min": None,
+            "value_max": None,
+            "value_default": 0,
+            "unit": None,
+            "requires_two_terminals": True,
+            "terminals": 2,
+            "has_state": True
+        },
+        "bulb": {
+            "label": "Bulb",
+            "value_min": 1.0,
+            "value_max": 10000.0,
+            "value_default": 240,
+            "unit": "Ω",
+            "requires_two_terminals": True,
+            "terminals": 2
         }
     }
     
@@ -102,13 +121,17 @@ class ComponentSpec:
         if not spec:
             return False, f"Unknown component type: {component_type}"
         
-        # Measurement devices and ground don't need value validation
-        if spec.get("measurement_device") or component_type == "ground":
+        # Measurement devices, ground, and switches don't need value validation
+        if spec.get("measurement_device") or component_type in ("ground", "switch"):
             return True, None
         
         value_min = spec["value_min"]
         value_max = spec["value_max"]
         unit = spec["unit"]
+        
+        # Skip validation if limits are None or value is None
+        if value is None or value_min is None or value_max is None:
+            return True, None
         
         if value < value_min:
             return False, f"{spec['label']} value {value}{unit} is below minimum {value_min}{unit}"

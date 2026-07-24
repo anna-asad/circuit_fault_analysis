@@ -176,6 +176,36 @@ const COMP_META = {
     fields: () => [{ label: 'Reference point (always 0)', value: '0 V' }],
     note: () => 'Every voltage in the circuit is measured relative to this point.',
   },
+  switch: {
+    icon: '⏻',
+    plainName: c => `switch`,
+    fields: (c) => [{ label: 'State', value: c.state === 'closed' ? 'Closed' : 'Open' }],
+    note: c => c.state === 'closed' 
+      ? 'The switch is closed — current flows through it.' 
+      : 'The switch is open — no current flows.',
+  },
+  bulb: {
+    icon: '💡',
+    plainName: c => `${fmtNominal('resistor', c.value)} bulb`,
+    fields: (c, voltages, currents) => {
+      const vdrop = resolveVoltageDrop(c, voltages);
+      const i     = resolveCurrent(c, voltages, currents);
+      const power = i != null ? Math.abs(vdrop * i) : null;
+      const brightness = c.brightness || 'off';
+      return [
+        { label: 'Voltage drop',           value: fmtV(vdrop) },
+        { label: 'Current flowing through it', value: fmtA(i) },
+        { label: 'Power used (heat)',      value: fmtW(power) },
+        { label: 'Brightness',             value: brightness },
+      ];
+    },
+    note: c => {
+      if (c.brightness === 'off') return 'The bulb is off — no power.';
+      if (c.brightness === 'dim') return 'The bulb is dimly lit.';
+      if (c.brightness === 'bright') return 'The bulb is bright!';
+      return null;
+    },
+  },
 };
 
 export function buildCardData(comp, voltages, currents, meters) {
@@ -193,7 +223,7 @@ export function buildCardData(comp, voltages, currents, meters) {
 
 export function buildAllCards(components, voltages, currents, meters) {
   const ORDER = ['dc_source', 'current_source', 'resistor', 'capacitor', 'inductor',
-                 'ammeter', 'voltmeter', 'ground'];
+                 'ammeter', 'voltmeter', 'switch', 'bulb', 'ground'];
   return [...components]
     .sort((a, b) => {
       const ai = ORDER.indexOf(a.type), bi = ORDER.indexOf(b.type);

@@ -74,6 +74,36 @@ const COMPONENT_SVGS = {
       <line x1="75" y1="20" x2="100" y2="20" stroke="currentColor" strokeWidth="2.5"/>
     </svg>
   ),
+  // Switch: open/closed toggle
+  switch_open: (
+    <svg className="component-svg" viewBox="0 0 100 40" preserveAspectRatio="xMidYMid meet">
+      <line x1="0"  y1="20" x2="20" y2="20" stroke="currentColor" strokeWidth="2.5"/>
+      <circle cx="20" cy="20" r="3" fill="currentColor"/>
+      <line x1="20" y1="20" x2="75" y2="5" stroke="currentColor" strokeWidth="2.5"/>
+      <circle cx="80" cy="20" r="3" fill="currentColor"/>
+      <line x1="80" y1="20" x2="100" y2="20" stroke="currentColor" strokeWidth="2.5"/>
+    </svg>
+  ),
+  switch_closed: (
+    <svg className="component-svg" viewBox="0 0 100 40" preserveAspectRatio="xMidYMid meet">
+      <line x1="0"  y1="20" x2="20" y2="20" stroke="currentColor" strokeWidth="2.5"/>
+      <circle cx="20" cy="20" r="3" fill="currentColor"/>
+      <line x1="20" y1="20" x2="80" y2="20" stroke="currentColor" strokeWidth="2.5"/>
+      <circle cx="80" cy="20" r="3" fill="currentColor"/>
+      <line x1="80" y1="20" x2="100" y2="20" stroke="currentColor" strokeWidth="2.5"/>
+    </svg>
+  ),
+  // Bulb: light bulb icon
+  bulb: (
+    <svg className="component-svg" viewBox="0 0 100 40" preserveAspectRatio="xMidYMid meet">
+      <line x1="0"  y1="20" x2="25" y2="20" stroke="currentColor" strokeWidth="2.5"/>
+      <circle cx="50" cy="20" r="12" stroke="currentColor" strokeWidth="2.5" fill="none"/>
+      {/* Filament */}
+      <path d="M 45 15 Q 50 20, 55 15 M 45 20 Q 50 22, 55 20 M 45 25 Q 50 22, 55 25" 
+            stroke="currentColor" strokeWidth="1.5" fill="none"/>
+      <line x1="75" y1="20" x2="100" y2="20" stroke="currentColor" strokeWidth="2.5"/>
+    </svg>
+  ),
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -86,6 +116,8 @@ const DEFAULT_VALUES = {
   ground: 0,
   ammeter: 0,    // ideal: 0 Ω
   voltmeter: 0,  // ideal: ∞ Ω (represented as 0, never used as a real value)
+  switch: 0,     // state-based, no numeric value
+  bulb: 240,     // typical bulb resistance in ohms
 };
 
 const NODE_STYLES = {
@@ -148,6 +180,36 @@ const NODE_STYLES = {
     background: 'transparent',
     color: '#1a6ab5',
   },
+  // Switch: green accent
+  switch: {
+    padding: '4px 8px',
+    borderRadius: '3px',
+    fontSize: '11px',
+    fontWeight: '600',
+    fontFamily: 'monospace',
+    border: 'none',
+    whiteSpace: 'pre-line',
+    textAlign: 'center',
+    minWidth: '80px',
+    minHeight: '52px',
+    background: 'transparent',
+    color: '#27ae60',
+  },
+  // Bulb: orange accent
+  bulb: {
+    padding: '4px 8px',
+    borderRadius: '3px',
+    fontSize: '11px',
+    fontWeight: '600',
+    fontFamily: 'monospace',
+    border: 'none',
+    whiteSpace: 'pre-line',
+    textAlign: 'center',
+    minWidth: '80px',
+    minHeight: '52px',
+    background: 'transparent',
+    color: '#f39c12',
+  },
 };
 
 // ── Rotation helpers ─────────────────
@@ -183,14 +245,19 @@ function formatValue(value, type) {
     if (value >= 1e-6) return `${value * 1e6}µA`;
     return `${value * 1e9}nA`;
   }
+  if (type === 'bulb') {
+    return value >= 1000 ? `${value / 1000}kΩ` : `${value}Ω`;
+  }
   return value;
 }
 
-function formatNodeValue(type, value) {
+function formatNodeValue(type, value, state) {
   if (type === 'dc_source') return `${value}V`;
   if (type === 'current_source') return formatValue(value, type);
   if (type === 'ammeter')   return '— A —';
   if (type === 'voltmeter') return '— V —';
+  if (type === 'switch')    return state === 'closed' ? 'Closed' : 'Open';
+  if (type === 'bulb')      return formatValue(value, type);
   return formatValue(value, type);
 }
 
@@ -199,6 +266,8 @@ function getNodeStyle(type) {
   if (type === 'ground')        return NODE_STYLES.ground;
   if (type === 'ammeter')       return NODE_STYLES.ammeter;
   if (type === 'voltmeter')     return NODE_STYLES.voltmeter;
+  if (type === 'switch')        return NODE_STYLES.switch;
+  if (type === 'bulb')          return NODE_STYLES.bulb;
   if (type === 'dc_source')     return { ...NODE_STYLES.base, minWidth: '90px' };
   if (type === 'current_source') return { ...NODE_STYLES.base, minWidth: '60px', minHeight: '90px' };
   return NODE_STYLES.base;
@@ -362,7 +431,10 @@ function ComponentNode({ id, data, mode }) {
           {/* SVG symbol rotates; container becomes portrait box at 90°/270° */}
           <div className="component-visual-container" style={componentType === 'current_source' ? undefined : visualContainerStyle}>
             <div className="component-svg-fallback visible">
-              {COMPONENT_SVGS[componentType]}
+              {componentType === 'switch' 
+                ? (data.state === 'closed' ? COMPONENT_SVGS.switch_closed : COMPONENT_SVGS.switch_open)
+                : COMPONENT_SVGS[componentType]
+              }
             </div>
           </div>
         </div>
@@ -380,6 +452,19 @@ function ComponentNode({ id, data, mode }) {
             <span className="meter-placeholder">
               {componentType === 'ammeter' ? 'series' : 'parallel'}
             </span>
+          ) : componentType === 'switch' ? (
+            // Switch shows state toggle button
+            <button
+              type="button"
+              className="value-button switch-state-button"
+              style={valueButtonStyle}
+              onClick={(e) => {
+                e.stopPropagation();
+                data.onToggleSwitch?.(id);
+              }}
+            >
+              {data.state === 'closed' ? 'Closed' : 'Open'}
+            </button>
           ) : (
           <button
             type="button"
@@ -390,7 +475,7 @@ function ComponentNode({ id, data, mode }) {
               data.onEditValue?.(id);
             }}
           >
-            {formatNodeValue(componentType, value)}
+            {formatNodeValue(componentType, value, data.state)}
           </button>
           )
         )}
@@ -498,6 +583,22 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       nds.map((n) =>
         n.id === nodeId
           ? { ...n, data: { ...n.data, isEditing: false, valueDraft: undefined, valueError: null } }
+          : n
+      )
+    );
+  }, [setNodes]);
+
+  const handleToggleSwitch = useCallback((nodeId) => {
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.id === nodeId
+          ? {
+              ...n,
+              data: {
+                ...n.data,
+                state: n.data.state === 'closed' ? 'open' : 'closed',
+              },
+            }
           : n
       )
     );
@@ -805,6 +906,20 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         componentId = id;
         console.log(`🔢 Creating voltmeter: counter was ${componentCounters?.voltmeter}, now ${finalNum}, ID: ${componentId}`);
         setComponentCounters?.((prev) => ({ ...prev, voltmeter: finalNum }));
+      } else if (type === 'switch') {
+        const prefix = 'SW';
+        const nextNum = (componentCounters?.switch ?? 0) + 1;
+        const { id, finalNum } = getUniqueId(prefix, nextNum);
+        componentId = id;
+        console.log(`🔢 Creating switch: counter was ${componentCounters?.switch}, now ${finalNum}, ID: ${componentId}`);
+        setComponentCounters?.((prev) => ({ ...prev, switch: finalNum }));
+      } else if (type === 'bulb') {
+        const prefix = 'L';
+        const nextNum = (componentCounters?.bulb ?? 0) + 1;
+        const { id, finalNum } = getUniqueId(prefix, nextNum);
+        componentId = id;
+        console.log(`🔢 Creating bulb: counter was ${componentCounters?.bulb}, now ${finalNum}, ID: ${componentId}`);
+        setComponentCounters?.((prev) => ({ ...prev, bulb: finalNum }));
       } else if (type === 'ground') {
         componentId = '⏚';
       } else if (type === 'junction') {
@@ -822,18 +937,20 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
           componentType: type,
           componentId: componentId,  // Store for circuit conversion
           value,
+          state: type === 'switch' ? 'open' : undefined,  // Initial switch state
           rotation: 0,
           onEditValue:   handleEditValue,
           onChangeDraft: handleChangeDraft,
           onSaveDraft:   handleSaveDraft,
           onCancelDraft: handleCancelDraft,
+          onToggleSwitch: handleToggleSwitch,
         },
         style: getNodeStyle(type),
       };
 
       setNodes((nds) => [...nds, newNode]);
     },
-    [handleEditValue, handleChangeDraft, handleSaveDraft, handleCancelDraft, setNodes, nodes, componentCounters, setComponentCounters]
+    [handleEditValue, handleChangeDraft, handleSaveDraft, handleCancelDraft, handleToggleSwitch, setNodes, nodes, componentCounters, setComponentCounters]
   );
 
   const onDragOver = useCallback((event) => {

@@ -82,6 +82,23 @@ class NetlistGenerator:
             self.netlist_lines.append(f"{spice_name} {n1} {n2} 1e9")
             return
 
+        # ── Switch ────────────────────────────────────────────────────────────
+        if comp_type == "switch":
+            # Convert switch state to resistance: closed = 0.001Ω, open = 1e9Ω
+            state = component.get("state", "open")
+            resistance = 0.001 if state == "closed" else 1e9
+            spice_name = f"R{comp_id}_sw"
+            self.netlist_lines.append(f"{spice_name} {n1} {n2} {resistance}")
+            return
+
+        # ── Bulb ──────────────────────────────────────────────────────────────
+        if comp_type == "bulb":
+            # Treat bulb as a resistor
+            comp_value = component.get("value", 240)
+            spice_name = f"R{comp_id}"
+            self.netlist_lines.append(f"{spice_name} {n1} {n2} {comp_value}")
+            return
+
         # ── Passive / source components ───────────────────────────────────────
         spice_name = self._get_spice_name(comp_type, comp_id)
         if not spice_name:

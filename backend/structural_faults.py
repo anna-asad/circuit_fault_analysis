@@ -113,7 +113,7 @@ class StructuralFaultDetector:
         for comp in circuit_data.get("components", []):
             ctype = comp.get("type")
             nodes = comp.get("nodes", [])
-            if ctype in ("dc_source", "current_source", "resistor", "capacitor", "inductor") and len(nodes) == 1:
+            if ctype in ("dc_source", "current_source", "resistor", "capacitor", "inductor", "switch", "bulb") and len(nodes) == 1:
                 self.faults.append(
                     f"Open circuit: {comp.get('id', 'component')} has an unconnected terminal."
                 )
@@ -205,9 +205,6 @@ class StructuralFaultDetector:
                 continue
             
             # Rule 1: Ammeter directly across voltage source forms short if no load
-            # DEBUG: Print what we found
-            print(f"DEBUG ammeter {aid}: vsources={voltage_sources}, connected={terminals_connected_without_ammeter}, has_load={has_load}")
-            
             if voltage_sources and terminals_connected_without_ammeter and not has_load:
                 self.faults.append(
                     f"Short circuit: ammeter {aid} across voltage source with no load."
@@ -275,9 +272,6 @@ class StructuralFaultDetector:
                             voltage_sources_in_path.append(comp.get("id"))
             
             terminals_connected_without_vm = uf.connected(n_plus, n_minus)
-            
-            # DEBUG
-            print(f"DEBUG voltmeter {vid}: vsources={voltage_sources_in_path}, isources={current_sources_in_path}, connected={terminals_connected_without_vm}")
             
             # Rule 2: Current source blocked by voltmeter
             if current_sources_in_path and not terminals_connected_without_vm:

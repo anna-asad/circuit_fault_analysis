@@ -3,7 +3,7 @@
 import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from typing import List, Dict, Any, Optional
 import uvicorn
 
@@ -56,10 +56,21 @@ app.add_middleware(
 
 class ComponentModel(BaseModel):
     id: str = Field(..., description="Unique component identifier (e.g., 'R1', 'V1')")
-    type: str = Field(..., description="Component type: dc_source, current_source, resistor, capacitor, inductor, ground, ammeter, voltmeter")
-    value: float = Field(..., description="Component value (resistance, capacitance, voltage, etc.)")
+    type: str = Field(..., description="Component type: dc_source, current_source, resistor, capacitor, inductor, ground, ammeter, voltmeter, switch, bulb")
+    value: Optional[float] = Field(default=0, description="Component value (resistance, capacitance, voltage, etc.)")
     nodes: List[str] = Field(..., description="Connected node IDs [positive, negative]")
     position: Dict[str, float] = Field(default={"x": 0, "y": 0}, description="Canvas position")
+    state: Optional[str] = Field(default=None, description="Switch state: 'open' or 'closed' (only for switch type)")
+    
+    @validator('value', pre=True, always=True)
+    def ensure_value(cls, v, values):
+        """Ensure value is never None, default to 0 for switches"""
+        if v is None:
+            component_type = values.get('type')
+            if component_type == 'switch':
+                return 0  # Switch doesn't use numeric value
+            return 0
+        return v
     
     class Config:
         json_schema_extra = {
@@ -193,6 +204,22 @@ async def get_components():
             "value_range": None,
             "unit": "V",
             "description": "Voltage measurement device (must be in parallel)"
+        },
+        {
+            "type": "switch",
+            "label": "Switch",
+            "icon": "⏻",
+            "value_range": None,
+            "unit": None,
+            "description": "Switch (open/closed state)"
+        },
+        {
+            "type": "bulb",
+            "label": "Bulb",
+            "icon": "💡",
+            "value_range": [1.0, 10000.0],
+            "unit": "Ω",
+            "description": "Light bulb with resistance"
         }
     ]
     
@@ -215,6 +242,12 @@ async def simulate_circuit(circuit: CircuitModel):
     
     try:
         circuit_dict = circuit.model_dump()
+        
+        # Ensure all component values are not None to prevent comparison errors
+        for comp in circuit_dict.get("components", []):
+            if comp.get("value") is None:
+                comp["value"] = 0
+        
         validator = CircuitValidator()
         is_valid, errors, warnings = validator.validate(circuit_dict)
 
@@ -243,12 +276,6 @@ async def simulate_circuit(circuit: CircuitModel):
         netlist = generate_netlist(circuit_dict)
         
         pre_sim_faults = detect_structural_faults(circuit_dict, simulation_result={})
-        
-        # DEBUG: Log what we're checking
-        print(f"\n=== STRUCTURAL FAULT CHECK ===")
-        print(f"Components: {[(c.get('id'), c.get('type'), c.get('nodes')) for c in circuit_dict.get('components', [])]}")
-        print(f"Pre-sim faults detected: {pre_sim_faults}")
-        print(f"============================\n")
 
         # Separate meter-placement faults (fatal) from everything else (warn).
         meter_faults   = [f for f in pre_sim_faults
@@ -318,6 +345,59 @@ async def simulate_circuit(circuit: CircuitModel):
                 "description": "Simulation completed but returned no voltage or current data. This may indicate an ngspice parsing issue or an unusual circuit configuration.",
             }
 
+        # Calculate bulb brightness based on power
+        BRIGHTNESS_THRESHOLD = 0.01  # Watts - configurable threshold
+        components_with_brightness = []
+        
+        for comp in circuit_dict.get("components", []):
+            comp_copy = comp.copy()
+            
+            if comp.get("type") == "bulb":
+                comp_id = comp.get("id")
+                nodes = comp.get("nodes", [])
+                
+                try:
+                    if len(nodes) >= 2:
+                        v1 = voltages.get(nodes[0])
+                        v2 = voltages.get(nodes[1])
+                        
+                        # Only calculate if both voltages exist
+                        if v1 is not None and v2 is not None:
+                            voltage = abs(float(v1) - float(v2))
+                            
+                            # Get current through bulb - bulb uses spice name R{comp_id}
+                            # Try multiple possible keys: RL1, L1, @RL1[i]
+                            spice_name = f"R{comp_id}"
+                            current = currents.get(spice_name) or currents.get(comp_id) or currents.get(f"@{spice_name}[i]") or 0
+                            if current is None:
+                                current = 0
+                            current = abs(float(current))
+                            
+                            power = voltage * current
+                            
+                            # Determine brightness
+                            if power < 1e-6:  # essentially zero
+                                brightness = "off"
+                            elif power < BRIGHTNESS_THRESHOLD:
+                                brightness = "dim"
+                            else:
+                                brightness = "bright"
+                            
+                            comp_copy["brightness"] = brightness
+                            comp_copy["power"] = power
+                        else:
+                            comp_copy["brightness"] = "off"
+                            comp_copy["power"] = 0
+                    else:
+                        comp_copy["brightness"] = "off"
+                        comp_copy["power"] = 0
+                except Exception as e:
+                    print(f"Error calculating bulb brightness for {comp_id}: {e}")
+                    comp_copy["brightness"] = "off"
+                    comp_copy["power"] = 0
+            
+            components_with_brightness.append(comp_copy)
+
         return SimulationResponse(
             success=True,
             netlist=netlist,
@@ -326,7 +406,7 @@ async def simulate_circuit(circuit: CircuitModel):
             simulation_data={
                 "voltages":       voltages,
                 "currents":       currents,
-                "components":     circuit_dict.get("components", []),
+                "components":     components_with_brightness,
                 "meters":         circuit_dict.get("meters", []),
                 "drift_warnings": pattern_faults.get("drift_warnings", []) if pattern_faults else [],
             },
@@ -334,6 +414,11 @@ async def simulate_circuit(circuit: CircuitModel):
         )
         
     except Exception as e:
+        import traceback
+        print("=" * 80)
+        print("ERROR in simulate_circuit:")
+        print(traceback.format_exc())
+        print("=" * 80)
         raise HTTPException(status_code=500, detail=str(e))
 
 
