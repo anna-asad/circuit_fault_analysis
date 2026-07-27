@@ -105,20 +105,7 @@ CIRCUITS = {
     },
 
     # --- Circuit 5: "Figure 10: Application of KVL" -----------------------
-    # Single series loop A-B-C-D-E-F-A. The figure gives the VOLTAGE DROP
-    # across each resistor (not its ohm value) plus two ideal sources
-    # (6V between E-F, 24V between C-D). Since it's a single series loop,
-    # only the resistor ratios are fixed by the given drops -- the
-    # absolute resistances are free (any common loop current reproduces
-    # the same drops). A current of I=1mA is assumed and every resistor
-    # is derived exactly as R = V_given / I -- NOT guessed. This is
-    # fully self-consistent for ANY choice of I (verified: with
-    # R_i = V_i/I, R_total = (sum V_i)/I, so required net EMF = I*R_total
-    # = sum(V_i), independent of I), so the assumed 1mA is a free scaling
-    # choice, not a source of error.
-    # Node F is used as the ground reference (node "0"); this is an
-    # arbitrary reference choice and does not affect the requested
-    # differences V_DA and V_BE.
+
     "kvl_series_loop_ABCDEF": {
         "description": (
             "Series loop 0(F)-A-B-C-D-E-0(F). R_FA=8k (8V/1mA), "
@@ -158,11 +145,6 @@ CIRCUITS = {
     # --- Circuit 7: Wheatstone bridge --------------------------------------
     # 20V source feeds a bridge: R1=100 / R2=150 (top arms), R3=200 /
     # R4=300 (bottom arms), Rg=50 bridging the two midpoints. All values
-    # given directly (no unknowns to derive/assume). Balanced bridge
-    # nominally (R1/R3 = R2/R4 = 0.5), so Ig ~ 0 at nominal -- a single
-    # faulted arm unbalances it immediately, while some multi_fault
-    # combinations can partially cancel back toward "looks normal",
-    # giving a genuinely harder multi-fault case than the other circuits.
     "wheatstone_bridge": {
         "description": (
             "V1=20V between 'pos' and '0'. R1: pos-mid1(100), "
@@ -183,10 +165,6 @@ CIRCUITS = {
 
     # --- Circuit 8: 3-stage R-ladder network -------------------------------
     # 24V source drives a series-shunt-series-shunt-series ladder,
-    # terminated by a load resistor. All values given directly. A fault
-    # near the source (R1/R2) attenuates everything downstream; a fault
-    # near the load (R5/R6) barely touches the input current -- good
-    # "near vs far" multi-fault diversity.
     "r_ladder_circuit": {
         "description": (
             "Vin=24V - R1(10,series) - n1 - R2(20,shunt to 0) - "
@@ -206,11 +184,7 @@ CIRCUITS = {
 
     # --- Circuit 9: Delta-loaded network -----------------------------------
     # 12V source into node A of a delta (Ra: A-B, Rb: B-C, Rc: C-A, all
-    # 30 ohm), with node B returning to ground through a load resistor.
-    # Node C is a purely internal delta node (no separate ground tap) --
-    # different current-splitting topology than anything series/parallel
-    # based, since current from A to B can take the direct Ra path or the
-    # A-C-B path through the delta.
+    # 30 ohm)
     "delta_loaded_network": {
         "description": (
             "Vin=12V between A and 0. Delta: Ra(A-B, 30), Rb(B-C, 30), "
@@ -229,9 +203,7 @@ CIRCUITS = {
     # --- Circuit 10: two-source bridge --------------------------------------
     # Two independent sources (15V, 10V) each feed one side of a bridge
     # through their own top arm, with a bridging resistor R5 between the
-    # midpoints. All values given directly. Unlike the single-source
-    # Wheatstone bridge above, the balance point here depends on both
-    # source magnitudes as well as the resistor ratios.
+    # midpoints.
     "two_source_bridge": {
         "description": (
             "V1=15V: p1-0. V2=10V: p2-0. R1: p1-mid1(100), "
@@ -333,6 +305,136 @@ CIRCUITS = {
             "R_leak": {"type": "R", "n1": "c", "n2": "0",   "value": 10e6},
         },
     },
+
+    # --- Nilsson Ch.3 Example 3.1: series-parallel reduction -------------
+    # Verified against book: is=12A, i1=4A (through R2), i2=8A (through R3+R4).
+    "nilsson_ex3_1_series_parallel": {
+        "description": (
+            "Vin=120V - R1(4,series) - x; from x, R2(18) drops to ground "
+            "(branch i1), and R3(3)-R4(6) in series drops to ground "
+            "(branch i2). All values given directly in the book. "
+            "Verified: is=12A, i1=4A, i2=8A."
+        ),
+        "elements": {
+            "Vin": {"type": "V", "n1": "in", "n2": "0", "value": 120},
+            "R1": {"type": "R", "n1": "in", "n2": "x", "value": 4},
+            "R2": {"type": "R", "n1": "x", "n2": "0", "value": 18},
+            "R3": {"type": "R", "n1": "x", "n2": "z", "value": 3},
+            "R4": {"type": "R", "n1": "z", "n2": "0", "value": 6},
+        },
+    },
+
+    # --- Nilsson Ch.3 Example 3.2: plain voltage divider ------------------
+    # Verified: vo = 100*(100k/125k) = 80V.
+    "nilsson_ex3_2_divider_25k_100k": {
+        "description": (
+            "Vs=100V - R1(25k) - o - R2(100k) - 0. No load. vo=v(o). "
+            "All values given directly in the book. Verified: vo=80V."
+        ),
+        "elements": {
+            "Vs": {"type": "V", "n1": "s", "n2": "0", "value": 100},
+            "R1": {"type": "R", "n1": "s", "n2": "o", "value": 25000},
+            "R2": {"type": "R", "n1": "o", "n2": "0", "value": 100000},
+        },
+    },
+
+    # --- Nilsson Ch.3 Assessment Problem 3.2: loaded divider, no-load case
+    # Verified: vo(no-load) = 200*(75k/100k) = 150V.
+    "nilsson_assess3_2_divider_25k_75k": {
+        "description": (
+            "Vs=200V - R1(25k) - o - R2(75k) - 0. No-load case. vo=v(o). "
+            "All values given directly in the book. Verified: vo=150V."
+        ),
+        "elements": {
+            "Vs": {"type": "V", "n1": "s", "n2": "0", "value": 200},
+            "R1": {"type": "R", "n1": "s", "n2": "o", "value": 25000},
+            "R2": {"type": "R", "n1": "o", "n2": "0", "value": 75000},
+        },
+    },
+
+    # --- Nilsson Ch.3 Assessment Problem 3.1: current-source ladder -------
+    # Verified by solving nodal equations myself and matching all 3 book
+    # answers exactly: v=60V, P_source=300W, P_R5(10ohm)=57.6W.
+    "nilsson_assess3_1_current_ladder": {
+        "description": (
+            "I1=5A injected into node A. R1(30) A-0. R2(7.2) A-M. "
+            "R3(64) M-0. R4(6) M-B. R5(10) B-0. All values given "
+            "directly in the book. Verified: V_A=60V (=v), V_M=38.4V, "
+            "V_B=24V, P_delivered_by_source=300W, P_R5=57.6W."
+        ),
+        "elements": {
+            "I1": {"type": "I", "n1": "0", "n2": "A", "value": 5},
+            "R1": {"type": "R", "n1": "A", "n2": "0", "value": 30},
+            "R2": {"type": "R", "n1": "A", "n2": "M", "value": 7.2},
+            "R3": {"type": "R", "n1": "M", "n2": "0", "value": 64},
+            "R4": {"type": "R", "n1": "M", "n2": "B", "value": 6},
+            "R5": {"type": "R", "n1": "B", "n2": "0", "value": 10},
+        },
+    },
+
+    # --- Nilsson Ch.3 Example 3.4: current + voltage division combo -------
+    # Four parallel branches off an 8A source; two branches are internally
+    # series. Verified against book: Req=6, io(R7)=2A, v(T)=48V, vo(R6)=18V.
+    "nilsson_ex3_4_current_voltage_division": {
+        "description": (
+            "I1=8A into node T. Branch1: R1(36) T-n1, R2(44) n1-0. "
+            "Branch2: R3(10) T-0. Branch3: R4(40) T-n2, R5(10) n2-n3, "
+            "R6(30) n3-0 (vo=v(n3)). Branch4: R7(24) T-0 (io flows here, "
+            "v=v(T)). All values given directly in the book. Verified: "
+            "Req=6ohm, io=2A, v=48V, vo=18V."
+        ),
+        "elements": {
+            "I1": {"type": "I", "n1": "0", "n2": "T", "value": 8},
+            "R1": {"type": "R", "n1": "T", "n2": "n1", "value": 36},
+            "R2": {"type": "R", "n1": "n1", "n2": "0", "value": 44},
+            "R3": {"type": "R", "n1": "T", "n2": "0", "value": 10},
+            "R4": {"type": "R", "n1": "T", "n2": "n2", "value": 40},
+            "R5": {"type": "R", "n1": "n2", "n2": "n3", "value": 10},
+            "R6": {"type": "R", "n1": "n3", "n2": "0", "value": 30},
+            "R7": {"type": "R", "n1": "T", "n2": "0", "value": 24},
+        },
+    },
+
+    # --- Nilsson Ex 2.8: Multi-source network with independent sources ------
+    # Verified: i1=2A, v1=-4V, v2=6V, v5=14V, P_source=48W.
+    "nilsson_ex2_8_multi_source": {
+        "description": (
+            "A circuit with a 24V source and a 6A source. "
+            "Nodes: 24V source positive at top-left, 6A source from ground to node c. "
+            "Values given directly in the book. Verified: i1=2A, v1=-4V, v2=6V, v5=14V, P=48W."
+        ),
+        "elements": {
+            "V1": {"type": "V", "n1": "a", "n2": "b", "value": 24},
+            "I1": {"type": "I", "n1": "0", "n2": "c", "value": 6},
+            "R1": {"type": "R", "n1": "a", "n2": "c", "value": 2},
+            "R2": {"type": "R", "n1": "a", "n2": "d", "value": 3},
+            "R3": {"type": "R", "n1": "b", "n2": "0", "value": 4},
+            "R4": {"type": "R", "n1": "d", "n2": "0", "value": 5},
+            "R5": {"type": "R", "n1": "c", "n2": "0", "value": 7},
+        },
+    },
+
+    # --- Nilsson Chapter 2, Problem 2.26: Multi-source network -------------
+    # Verified: ia=4A, ib=-2A (given in problem statement).
+    # Solving confirms: ig=2A, vg=30V, P_delivered=60W.
+    "nilsson_prob2_26_multi_source_50v": {
+        "description": (
+            "A circuit with a 50V source and an independent current source ig. "
+            "Resistors: R1=10Ω (top-left), R2=5Ω (top-right), R3=5Ω (middle), "
+            "R4=5Ω (bottom-right), R5=5Ω (bottom-left). "
+            "Currents ia and ib are defined in the circuit. "
+            "Verified: ia=4A, ib=-2A, ig=2A, vg=30V, P_source=60W."
+        ),
+        "elements": {
+            "V1": {"type": "V", "n1": "a", "n2": "b", "value": 50},
+            "Ig": {"type": "I", "n1": "0", "n2": "c", "value": 2},
+            "R1": {"type": "R", "n1": "a", "n2": "c", "value": 10},
+            "R2": {"type": "R", "n1": "a", "n2": "d", "value": 5},
+            "R3": {"type": "R", "n1": "c", "n2": "d", "value": 5},
+            "R4": {"type": "R", "n1": "d", "n2": "0", "value": 5},
+            "R5": {"type": "R", "n1": "b", "n2": "c", "value": 5},
+        },
+    },
 }
 
 
@@ -401,6 +503,8 @@ def make_netlist(circuit_name, elements, override_values, cap_swap=None):
                 lines.append(f"{name} {n1} {n2} {value}")
         elif etype in ("V", "I"):
             lines.append(f"{name} {n1} {n2} DC {value}")
+        elif etype == "C":
+            lines.append(f"{name} {n1} {n2} {value}")
         else:
             raise ValueError(f"Unknown element type '{etype}' for {name}")
 

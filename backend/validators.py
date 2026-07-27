@@ -11,7 +11,7 @@ class ComponentSpec:
         "dc_source": {
             "label": "DC Voltage Source",
             "value_min": 0.1,
-            "value_max": 100.0,
+            "value_max": 500.0,
             "value_default": 5.0,
             "unit": "V",
             "requires_two_terminals": True,
@@ -20,7 +20,7 @@ class ComponentSpec:
         "current_source": {
             "label": "Current Source",
             "value_min": 1e-6,  # 1 µA
-            "value_max": 10.0,  # 10 A
+            "value_max": 20.0,  # 20 A
             "value_default": 0.012,  # 12 mA
             "unit": "A",
             "requires_two_terminals": True,
