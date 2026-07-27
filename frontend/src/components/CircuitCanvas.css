@@ -131,17 +131,17 @@
 
 /* Bulb SVG overrides - the bulb node uses its own fill/stroke colors */
 .bulb-svg {
-  color: #f39c12;
+  color: #c58b0f;
 }
 
 .bulb-svg-on {
   /* When bulb is on, the SVG internally sets bright colors; 
      this ensures fallback compatibility */
-  color: #ffb300;
+  color: #e2f01e;
 }
 
 .bulb-svg-off {
-  color: #888;
+  color: #413f3f;
 }
 
 .component-svg-fallback {

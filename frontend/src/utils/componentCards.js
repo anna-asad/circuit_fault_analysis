@@ -91,7 +91,13 @@ const COMP_META = {
         { label: 'Power used (heat)',            value: fmtW(i != null ? vdrop * i : null) },
       ];
     },
-    note: () => null,
+    note: (c, voltages, currents) => {
+      const i = resolveCurrent(c, voltages, currents);
+      if (i != null && Math.abs(i) < 1e-9) {
+        return 'No current flows through the resistor because the circuit is open.';
+      }
+      return null;
+    },
   },
   dc_source: {
     icon: '🔋',
@@ -105,7 +111,13 @@ const COMP_META = {
         { label: "Power it's supplying",    value: fmtW(i != null ? Math.abs(vdrop * i) : null) },
       ];
     },
-    note: c => `This is the power source — everything else is using the ${fmtNominal('dc_source', c.value)} it makes.`,
+    note: (c, voltages, currents) => {
+      const i = resolveCurrent(c, voltages, currents);
+      if (i != null && Math.abs(i) < 1e-9) {
+        return 'The battery is connected, but the circuit path is open so it cannot deliver current.';
+      }
+      return `This is the power source — everything else is using the ${fmtNominal('dc_source', c.value)} it makes.`;
+    },
   },
   current_source: {
     icon: '⬆',
@@ -188,12 +200,14 @@ const COMP_META = {
     icon: '💡',
     plainName: () => 'bulb',
     fields: (c) => {
-      const state = c.state === 'on' ? 'ON' : 'OFF';
+      const state = c.state === 'bright' ? 'BRIGHT' : c.state === 'dim' ? 'DIM' : 'OFF';
       return [{ label: 'Bulb', value: state }];
     },
-    note: c => (c.state === 'on'
-      ? 'The bulb is lit because current is flowing through its branch.'
-      : 'The bulb is off because no meaningful current is flowing through its branch.'),
+    note: c => (c.state === 'bright'
+      ? 'The bulb is glowing brightly — full current is flowing through its branch.'
+      : c.state === 'dim'
+        ? 'The bulb is dimly lit — only a small current is flowing through its branch.'
+        : 'The bulb is off — no meaningful current is flowing through its branch.'),
   },
 };
 

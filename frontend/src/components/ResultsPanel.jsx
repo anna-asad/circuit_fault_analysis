@@ -205,7 +205,14 @@ function ResultsPanel({ results }) {
   const isNormalML  = String(pattern_faults?.predicted_fault ?? '').toLowerCase() === 'normal';
   const mlAvailable = !!pattern_faults &&
     !['model_unavailable', 'no_simulation_data'].includes(pattern_faults.fault_type);
-  const isAllClear  = success && !hasFaults && isNormalML && mlAvailable;
+
+  // Detect open circuit state: circuit is structurally valid but inactive
+  // (e.g. an open switch). This is a non-fatal circuit state, not an error.
+  const isOpenCircuit = hasFaults && structural_faults.some(
+    f => /open.?circuit/i.test(f) && /switch/i.test(f)
+  );
+
+  const isAllClear  = success && !hasFaults && isNormalML && mlAvailable && !isOpenCircuit;
 
   // ── Failed simulation ───────────────────────────────────────────────────
   if (!success) {

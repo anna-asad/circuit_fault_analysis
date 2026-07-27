@@ -307,11 +307,38 @@ async def simulate_circuit(circuit: CircuitModel):
                 error=f"Simulation failed: {sim_result['error']}"
             )
         
-        # Step 4: Detect structural faults from simulation results
+# Step 4: Detect structural faults from simulation results
         structural_faults_detected = detect_structural_faults(circuit_dict, sim_result)
         all_structural_faults = warnings + structural_faults_detected
 
-        if structural_faults_detected:
+        # Check if the circuit has an open switch (non-fatal circuit state).
+        # An open switch creates a valid-but-inactive circuit — the simulation
+        # data is still usable for rendering component cards, so we treat it
+        # as success (not a fault).
+        has_open_switch = any(
+            comp.get("type") == "switch"
+            and str(comp.get("state", "open")).lower() == "open"
+            for comp in circuit_dict.get("components", [])
+        )
+
+        if has_open_switch:
+            # Add a non-fatal structural fault about the open switch
+            open_switch_ids = [
+                comp.get("id", "?")
+                for comp in circuit_dict.get("components", [])
+                if comp.get("type") == "switch"
+                and str(comp.get("state", "open")).lower() == "open"
+            ]
+            for sid in open_switch_ids:
+                msg = (
+                    f"Open circuit: switch {sid} is open. "
+                    f"Close the switch to allow current to flow."
+                )
+                if msg not in all_structural_faults:
+                    all_structural_faults.append(msg)
+            # Don't return early — simulation data is valid; the frontend
+            # will render the "Open Circuit Detected" UI instead.
+        elif structural_faults_detected:
             return SimulationResponse(
                 success=False,
                 netlist=netlist,
@@ -345,9 +372,11 @@ async def simulate_circuit(circuit: CircuitModel):
                 "description": "Simulation completed but returned no voltage or current data. This may indicate an ngspice parsing issue or an unusual circuit configuration.",
             }
 
-        # Determine bulb on/off state from branch current only.
+        # Determine bulb brightness level from branch current.
+        # Three states: OFF (no current), DIM (low current), BRIGHT (full current).
         components_with_brightness = []
-        current_threshold = 1e-6
+        dim_threshold   = 1e-6     # A — below this = OFF
+        bright_threshold = 5e-3    # A — above this = BRIGHT
         
         for comp in circuit_dict.get("components", []):
             comp_copy = comp.copy()
@@ -370,9 +399,15 @@ async def simulate_circuit(circuit: CircuitModel):
                             current = 0
                         current = abs(float(current))
 
-                        state = "on" if current > current_threshold else "off"
+                        if current >= bright_threshold:
+                            state = "bright"
+                        elif current > dim_threshold:
+                            state = "dim"
+                        else:
+                            state = "off"
+
                         comp_copy["state"] = state
-                        comp_copy["brightness"] = "bright" if state == "on" else "off"
+                        comp_copy["brightness"] = state
                         comp_copy["power"] = 0
                     else:
                         comp_copy["state"] = "off"

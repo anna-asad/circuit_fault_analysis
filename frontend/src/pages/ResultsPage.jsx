@@ -115,31 +115,49 @@ function ResultsPage({ results, onBack, circuit }) {
   const isNormalML = String(pattern_faults?.predicted_fault ?? '').toLowerCase() === 'normal';
   const mlAvailable = !!pattern_faults &&
     !['model_unavailable', 'no_simulation_data'].includes(pattern_faults.fault_type);
+
+  // Detect open circuit state: circuit is structurally valid but inactive
+  // (e.g. an open switch). This is a non-fatal circuit state, not an error.
+  const isOpenCircuit = hasFaults && structural_faults.some(
+    f => /open.?circuit/i.test(f) && /switch/i.test(f)
+  );
+
   const isAllClear = success && !hasFaults && isNormalML && mlAvailable;
   const structuralStatus = getStructuralStatus(structural_faults);
   const firstStructuralFault = structural_faults?.[0] ?? '';
   const displayStructuralFault = formatStructuralFault(firstStructuralFault);
   const statusTitle = isAllClear
     ? 'Everything checks out'
-    : !success
-      ? 'Simulation failed'
-      : hasFaults
-        ? structuralStatus.title
-        : (pattern_faults?.predicted_fault || 'Fault Detected');
+    : isOpenCircuit
+      ? 'Open Circuit Detected'
+      : !success
+        ? 'Simulation failed'
+        : hasFaults
+          ? structuralStatus.title
+          : (pattern_faults?.predicted_fault || 'Fault Detected');
   const statusSubtitle = isAllClear
     ? 'No structural faults · Circuit operating normally'
-    : !success
-      ? (displayStructuralFault.detail || error || 'Check circuit wiring')
-      : hasFaults
-        ? displayStructuralFault.detail
-        : (pattern_faults?.description ?? '');
+    : isOpenCircuit
+      ? 'The circuit is valid, but no current is flowing because the switch is open.'
+      : !success
+        ? (displayStructuralFault.detail || error || 'Check circuit wiring')
+        : hasFaults
+          ? displayStructuralFault.detail
+          : (pattern_faults?.description ?? '');
   const statusClass = isAllClear
     ? 'status-card-success'
-    : !success
-      ? 'status-card-fault'
-      : hasFaults
+    : isOpenCircuit
+      ? 'status-card-warn'
+      : !success
         ? 'status-card-fault'
-        : 'status-card-warn';
+        : hasFaults
+          ? 'status-card-fault'
+          : 'status-card-warn';
+
+  // Override the structural faults section title when it's an open circuit
+  const structuralFaultsTitle = isOpenCircuit
+    ? 'ℹ Circuit Status'
+    : '⚠ Structural Faults';
 
   // Add ground as a pseudo-component so its card shows
   const allComponents = [
@@ -151,10 +169,10 @@ function ResultsPage({ results, onBack, circuit }) {
 
   const cards = buildAllCards(allComponents, voltages, currents, meters);
 
-  const bulbStateMap = new Map(
+const bulbStateMap = new Map(
     (simulation_data?.components ?? [])
       .filter(comp => comp.type === 'bulb')
-      .map(comp => [comp.id, comp.state || (comp.brightness === 'bright' ? 'on' : 'off')])
+      .map(comp => [comp.id, comp.state || comp.brightness || 'off'])
   );
 
   const canvasCircuit = {
@@ -273,19 +291,26 @@ function ResultsPage({ results, onBack, circuit }) {
             </section>
           )}
 
-          {/* ── Structural faults ── */}
+          {/* ── Structural faults / Circuit Status ── */}
           <section className="data-section">
             <button
               type="button"
               className="data-section-header"
               onClick={() => setFaultsOpen(v => !v)}
             >
-              <span className="data-section-title">⚠ Structural Faults</span>
+              <span className="data-section-title">{structuralFaultsTitle}</span>
               <span className="data-section-toggle">{faultsOpen ? '▼' : '▶'}</span>
             </button>
             {faultsOpen && (
               <div className="data-section-content">
-                {hasFaults ? (
+                {isOpenCircuit ? (
+                  <ul className="fault-list-page">
+                    <li className="fault-item-page" style={{ background: '#fef9c3', borderLeft: '3px solid #eab308' }}>
+                      <strong>Open circuit detected.</strong>
+                      <span>The simulation completed successfully, but the electrical path is incomplete. This is not a wiring fault—it is the expected behavior when a switch is left open.</span>
+                    </li>
+                  </ul>
+                ) : hasFaults ? (
                   <ul className="fault-list-page">
                     {structural_faults.map((f, i) => (
                       <li key={i} className="fault-item-page">
@@ -302,7 +327,30 @@ function ResultsPage({ results, onBack, circuit }) {
           </section>
 
           {/* ── ML classification ── */}
-          {pattern_faults && (
+          {isOpenCircuit ? (
+            <section className="data-section">
+              <button
+                type="button"
+                className="data-section-header"
+                onClick={() => setMlOpen(v => !v)}
+              >
+                <span className="data-section-title">🤖 ML Classification</span>
+                <span className="data-section-toggle">{mlOpen ? '▼' : '▶'}</span>
+              </button>
+              {mlOpen && (
+                <div className="data-section-content">
+                  <div className="ml-card-page ml-card-page-unknown" style={{ margin: '8px 12px' }}>
+                    <div className="ml-pred-row">
+                      <strong>Not Applicable</strong>
+                    </div>
+                    <p className="ml-desc-page">
+                      The circuit is inactive because no current is flowing. Fault classification is skipped until the circuit is closed.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </section>
+          ) : pattern_faults && (
             <section className="data-section">
               <button
                 type="button"
