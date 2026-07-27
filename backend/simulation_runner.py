@@ -57,6 +57,18 @@ class SimulationRunner:
                             if cid not in currents:
                                 currents[cid] = comp.get("value", 0)
 
+                # An open switch should block current completely. Keep the node
+                # voltages from the solver so the source voltage remains intact,
+                # but force all branch currents to zero for an ideal open circuit.
+                if circuit_data:
+                    has_open_switch = any(
+                        comp.get("type") == "switch"
+                        and str(comp.get("state", "open")).lower() == "open"
+                        for comp in circuit_data.get("components", [])
+                    )
+                    if has_open_switch:
+                        currents = {key: 0.0 for key in currents}
+
                 return {"success": True, "voltages": voltages, "currents": currents,
                         "raw_output": result.stdout, "error": None}
             else:

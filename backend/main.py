@@ -345,9 +345,9 @@ async def simulate_circuit(circuit: CircuitModel):
                 "description": "Simulation completed but returned no voltage or current data. This may indicate an ngspice parsing issue or an unusual circuit configuration.",
             }
 
-        # Calculate bulb brightness based on power
-        BRIGHTNESS_THRESHOLD = 0.01  # Watts - configurable threshold
+        # Determine bulb on/off state from branch current only.
         components_with_brightness = []
+        current_threshold = 1e-6
         
         for comp in circuit_dict.get("components", []):
             comp_copy = comp.copy()
@@ -358,41 +358,29 @@ async def simulate_circuit(circuit: CircuitModel):
                 
                 try:
                     if len(nodes) >= 2:
-                        v1 = voltages.get(nodes[0])
-                        v2 = voltages.get(nodes[1])
-                        
-                        # Only calculate if both voltages exist
-                        if v1 is not None and v2 is not None:
-                            voltage = abs(float(v1) - float(v2))
-                            
-                            # Get current through bulb - bulb uses spice name R{comp_id}
-                            # Try multiple possible keys: RL1, L1, @RL1[i]
-                            spice_name = f"R{comp_id}"
-                            current = currents.get(spice_name) or currents.get(comp_id) or currents.get(f"@{spice_name}[i]") or 0
-                            if current is None:
-                                current = 0
-                            current = abs(float(current))
-                            
-                            power = voltage * current
-                            
-                            # Determine brightness
-                            if power < 1e-6:  # essentially zero
-                                brightness = "off"
-                            elif power < BRIGHTNESS_THRESHOLD:
-                                brightness = "dim"
-                            else:
-                                brightness = "bright"
-                            
-                            comp_copy["brightness"] = brightness
-                            comp_copy["power"] = power
-                        else:
-                            comp_copy["brightness"] = "off"
-                            comp_copy["power"] = 0
+                        # Try to recover the branch current from the simulation results.
+                        spice_name = f"R{comp_id}"
+                        current = (
+                            currents.get(spice_name)
+                            or currents.get(comp_id)
+                            or currents.get(f"@{spice_name}[i]")
+                            or 0
+                        )
+                        if current is None:
+                            current = 0
+                        current = abs(float(current))
+
+                        state = "on" if current > current_threshold else "off"
+                        comp_copy["state"] = state
+                        comp_copy["brightness"] = "bright" if state == "on" else "off"
+                        comp_copy["power"] = 0
                     else:
+                        comp_copy["state"] = "off"
                         comp_copy["brightness"] = "off"
                         comp_copy["power"] = 0
                 except Exception as e:
-                    print(f"Error calculating bulb brightness for {comp_id}: {e}")
+                    print(f"Error calculating bulb state for {comp_id}: {e}")
+                    comp_copy["state"] = "off"
                     comp_copy["brightness"] = "off"
                     comp_copy["power"] = 0
             

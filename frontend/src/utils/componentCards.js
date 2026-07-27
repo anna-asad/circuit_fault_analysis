@@ -186,25 +186,14 @@ const COMP_META = {
   },
   bulb: {
     icon: '💡',
-    plainName: c => `${fmtNominal('resistor', c.value)} bulb`,
-    fields: (c, voltages, currents) => {
-      const vdrop = resolveVoltageDrop(c, voltages);
-      const i     = resolveCurrent(c, voltages, currents);
-      const power = i != null ? Math.abs(vdrop * i) : null;
-      const brightness = c.brightness || 'off';
-      return [
-        { label: 'Voltage drop',           value: fmtV(vdrop) },
-        { label: 'Current flowing through it', value: fmtA(i) },
-        { label: 'Power used (heat)',      value: fmtW(power) },
-        { label: 'Brightness',             value: brightness },
-      ];
+    plainName: () => 'bulb',
+    fields: (c) => {
+      const state = c.state === 'on' ? 'ON' : 'OFF';
+      return [{ label: 'Bulb', value: state }];
     },
-    note: c => {
-      if (c.brightness === 'off') return 'The bulb is off — no power.';
-      if (c.brightness === 'dim') return 'The bulb is dimly lit.';
-      if (c.brightness === 'bright') return 'The bulb is bright!';
-      return null;
-    },
+    note: c => (c.state === 'on'
+      ? 'The bulb is lit because current is flowing through its branch.'
+      : 'The bulb is off because no meaningful current is flowing through its branch.'),
   },
 };
 

@@ -151,6 +151,31 @@ function ResultsPage({ results, onBack, circuit }) {
 
   const cards = buildAllCards(allComponents, voltages, currents, meters);
 
+  const bulbStateMap = new Map(
+    (simulation_data?.components ?? [])
+      .filter(comp => comp.type === 'bulb')
+      .map(comp => [comp.id, comp.state || (comp.brightness === 'bright' ? 'on' : 'off')])
+  );
+
+  const canvasCircuit = {
+    ...(circuit ?? {}),
+    nodes: (circuit?.nodes ?? []).map(node => {
+      const componentId = node.data?.componentId || node.data?.label;
+      const bulbState = bulbStateMap.get(componentId);
+      if (node.data?.componentType === 'bulb' && bulbState) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            state: bulbState,
+          },
+        };
+      }
+      return node;
+    }),
+    edges: circuit?.edges ?? [],
+  };
+
   const mlCardClass = !pattern_faults ? ''
     : isNormalML ? 'ml-card-page ml-card-page-normal'
     : ['model_unavailable','prediction_error','schema_mismatch'].includes(pattern_faults.fault_type)
@@ -184,7 +209,7 @@ function ResultsPage({ results, onBack, circuit }) {
       <main className="results-page-body">
         {/* ── Left: circuit canvas ── */}
         <div className="results-canvas-container">
-          <CircuitCanvas setCircuit={() => {}} circuit={circuit} mode="results" />
+          <CircuitCanvas setCircuit={() => {}} circuit={canvasCircuit} mode="results" />
         </div>
 
         {/* ── Right: sidebar ── */}

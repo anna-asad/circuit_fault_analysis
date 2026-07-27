@@ -99,12 +99,58 @@ const COMPONENT_SVGS = {
       <line x1="0"  y1="20" x2="25" y2="20" stroke="currentColor" strokeWidth="2.5"/>
       <circle cx="50" cy="20" r="12" stroke="currentColor" strokeWidth="2.5" fill="none"/>
       {/* Filament */}
-      <path d="M 45 15 Q 50 20, 55 15 M 45 20 Q 50 22, 55 20 M 45 25 Q 50 22, 55 25" 
+      <path d="M 45 15 Q 50 20, 55 15 M 45 20 Q 50 22, 55 20 M 45 25 Q 50 22, 55 25"
             stroke="currentColor" strokeWidth="1.5" fill="none"/>
       <line x1="75" y1="20" x2="100" y2="20" stroke="currentColor" strokeWidth="2.5"/>
     </svg>
   ),
 };
+
+let _bulbIdCounter = 0;
+
+function renderComponentGraphic(componentType, state) {
+  if (componentType === 'bulb') {
+    const isOn = state === 'on';
+    const bulbId = _bulbIdCounter++;
+    const glowFilterId = `bulbGlow_${bulbId}`;
+    return (
+      <svg className={`component-svg bulb-svg ${isOn ? 'bulb-svg-on' : 'bulb-svg-off'}`} viewBox="0 0 100 40" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <filter id={glowFilterId} x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+            <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.4  0 1 0 0 0.3  0 0 1 0 0  0 0 0 2 0" result="glowColor" />
+            <feMerge>
+              <feMergeNode in="glowColor" />
+              <feMergeNode in="glowColor" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        {/* Glow halo: large blurred circle behind the bulb */}
+        {isOn && (
+          <circle cx="50" cy="20" r="18" fill="#ffd54f" opacity="0.35" filter={`url(${glowFilterId})`} />
+        )}
+        <line x1="0" y1="20" x2="25" y2="20" stroke="currentColor" strokeWidth="2.5" />
+        {/* Bulb glass: filled yellow when on, outline when off */}
+        <circle cx="50" cy="20" r="12" stroke={isOn ? '#ffb300' : 'currentColor'} strokeWidth="2.5" fill={isOn ? '#fff3cd' : 'none'} />
+        {/* Inner glow: brighter center */}
+        {isOn && (
+          <circle cx="50" cy="20" r="7" fill="#ffec99" opacity="0.8" />
+        )}
+        {/* Filament */}
+        <path d="M 45 15 Q 50 20, 55 15 M 45 20 Q 50 22, 55 20 M 45 25 Q 50 22, 55 25"
+              stroke={isOn ? '#ff8f00' : 'currentColor'} strokeWidth="1.5" fill="none" />
+        <line x1="75" y1="20" x2="100" y2="20" stroke="currentColor" strokeWidth="2.5" />
+      </svg>
+    );
+  }
+
+  if (componentType === 'switch') {
+    return state === 'closed' ? COMPONENT_SVGS.switch_closed : COMPONENT_SVGS.switch_open;
+  }
+
+  return COMPONENT_SVGS[componentType] ?? COMPONENT_SVGS.resistor;
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const DEFAULT_VALUES = {
@@ -257,7 +303,7 @@ function formatNodeValue(type, value, state) {
   if (type === 'ammeter')   return '— A —';
   if (type === 'voltmeter') return '— V —';
   if (type === 'switch')    return state === 'closed' ? 'Closed' : 'Open';
-  if (type === 'bulb')      return formatValue(value, type);
+  if (type === 'bulb')      return state === 'on' ? 'ON' : (state === 'off' ? 'OFF' : 'Bulb');
   return formatValue(value, type);
 }
 
@@ -410,7 +456,7 @@ function ComponentNode({ id, data, mode }) {
             <NodeTerminals rotation={rotation} componentType={data.componentType} />
             <div className="component-visual-container" style={data.componentType === 'current_source' ? undefined : visualContainerStyle}>
               <div className="component-svg-fallback visible">
-                {COMPONENT_SVGS[data.componentType]}
+                {renderComponentGraphic(data.componentType, data.state)}
               </div>
             </div>
           </div>

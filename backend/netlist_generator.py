@@ -192,6 +192,11 @@ class NetlistGenerator:
                 if sname:
                     self.netlist_lines.append(f"  print @{sname}[i]")
 
+            elif ctype == "bulb":
+                # Bulb is emitted as R{comp_id} in the netlist
+                sname = f"R{comp_id}"
+                self.netlist_lines.append(f"  print @{sname}[i]")
+
         self.netlist_lines.extend([".endc", ""])
 
 
