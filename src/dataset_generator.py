@@ -6,14 +6,10 @@ import random
 import re
 import subprocess
 
-# --------------------------------------------------------------------------
-# Global configuration
-# --------------------------------------------------------------------------
-
 OUT_ROOT = "output"
 CIRCUITS_ROOT = os.path.join(OUT_ROOT, "circuits")
 MANIFEST_ALL_PATH = os.path.join(OUT_ROOT, "manifest.csv")
-SAMPLES_PER_FAULT = 20
+SAMPLES_PER_FAULT = 100
 FAULT_TYPES = [
     "normal",
     "partial_short",
