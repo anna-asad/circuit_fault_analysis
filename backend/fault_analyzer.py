@@ -35,6 +35,7 @@ def _extract_features(
     branch_currents:  Dict[str, float],
     nominal_lookup:   Dict,
     circuit_data:     Dict = None,
+    design_values:    Dict[str, float] = None,
 ) -> Dict[str, float]:
     """
     Extract features for ML prediction.
@@ -56,7 +57,12 @@ def _extract_features(
         if not (name.upper().startswith("V") or name.upper().startswith("I"))
     )
 
-    nominal, _ = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
+    # Use design_values if provided (circuit-specific nominals), otherwise
+    # fall back to topology matching with global nominal_lookup
+    if design_values:
+        nominal = design_values
+    else:
+        nominal, _ = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
 
     deviations = []
     for name, val in component_values.items():
@@ -97,6 +103,7 @@ def _compute_drift_warnings(
     component_values: Dict[str, float],
     nominal_lookup:   Dict,
     circuit_data:     Dict = None,
+    design_values:    Dict[str, float] = None,
 ) -> List[Dict]:
     """
     Rule-based drift detection.
@@ -108,7 +115,12 @@ def _compute_drift_warnings(
         { component_id, actual, nominal, deviation_pct, message }
     Empty list if no topology match is available or no component has drifted.
     """
-    nominal, _ = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
+    # Use design_values if provided (circuit-specific nominals), otherwise
+    # fall back to topology matching with global nominal_lookup
+    if design_values:
+        nominal = design_values
+    else:
+        nominal, _ = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
     if not nominal:
         return []
 
@@ -151,6 +163,7 @@ class FaultAnalyzer:
         circuit_data:    Dict,
         node_voltages:   Dict[str, float],
         branch_currents: Dict[str, float],
+        design_values:   Dict[str, float] = None,
     ) -> Dict:
         if not self.model_loaded:
             return self._unavailable_response()
@@ -166,13 +179,13 @@ class FaultAnalyzer:
 
         # Rule-based drift warnings (independent of ML)
         drift_warnings = _compute_drift_warnings(
-            component_values, self._nominal_lookup, circuit_data
+            component_values, self._nominal_lookup, circuit_data, design_values
         )
 
         try:
             features = _extract_features(
                 component_values, signal_voltages, branch_currents,
-                self._nominal_lookup, circuit_data,
+                self._nominal_lookup, circuit_data, design_values,
             )
             result = self._predict(features)
         except Exception as exc:

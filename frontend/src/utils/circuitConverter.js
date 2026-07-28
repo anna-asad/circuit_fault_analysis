@@ -265,7 +265,17 @@ export function convertCircuitToBackendFormat(nodes, edges) {
     throw new Error('Add a DC voltage source or current source.');
   if (!allElecNodes.has('0')) throw new Error('Ground is not connected to the circuit!');
 
-  return { nodes: Array.from(allElecNodes), components, ground: '0', meters };
+  // Extract design_values (nominal component values) for ML inference
+  // This ensures the model compares against THIS circuit's intended values,
+  // not a different circuit's values via topology matching.
+  const designValues = {};
+  nonMeters.forEach(comp => {
+    if (comp.type === 'resistor' || comp.type === 'capacitor' || comp.type === 'inductor' || comp.type === 'current_source') {
+      designValues[comp.id] = comp.value;
+    }
+  });
+
+  return { nodes: Array.from(allElecNodes), components, ground: '0', meters, design_values: designValues };
 }
 
 function getDefaultValue(type) {

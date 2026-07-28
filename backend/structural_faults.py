@@ -129,7 +129,7 @@ class StructuralFaultDetector:
             comp = next((c for c in circuit_data.get("components", []) if c.get("id") == src), None)
             if not comp or comp.get("type") != "dc_source":
                 continue
-            if abs(current) > 1.0:
+            if abs(current) > 20.0:
                 self.faults.append(
                     f"Short circuit: excessive current through {src} ({abs(current):.3f} A)."
                 )

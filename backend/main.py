@@ -95,6 +95,13 @@ class CircuitModel(BaseModel):
         default=[],
         description="Ammeter/voltmeter metadata: [{id, type, spiceName, nodes}]"
     )
+    # Design values: the nominal/intended component values for this specific circuit.
+    # Used by the ML model to compute deviation ratios (actual vs nominal) without
+    # relying on cross-circuit topology matching.
+    design_values: Optional[Dict[str, float]] = Field(
+        default=None,
+        description="Nominal component values for this circuit: {component_id: nominal_value}"
+    )
 
 
 class SimulationResponse(BaseModel):
@@ -361,6 +368,7 @@ async def simulate_circuit(circuit: CircuitModel):
                 circuit_data    = circuit_dict,
                 node_voltages   = voltages,
                 branch_currents = currents,
+                design_values   = circuit_dict.get("design_values"),
             )
         else:
             # No simulation data - provide a clear message
