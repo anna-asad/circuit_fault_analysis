@@ -29,7 +29,7 @@ class ComponentSpec:
         "resistor": {
             "label": "Resistor",
             "value_min": 0.0,
-            "value_max": 1e6,  # 1 MΩ
+            "value_max": 1e8,  # 1 MΩ
             "value_default": 1000.0,
             "unit": "Ω",
             "requires_two_terminals": True,
