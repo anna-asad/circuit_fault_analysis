@@ -272,6 +272,137 @@ function getHandlePositions(rotation = 0) {
   return ROTATION_TO_POSITIONS[((rotation % 360) + 360) % 360] ?? ROTATION_TO_POSITIONS[0];
 }
 
+// ── Wire-splitting geometry helpers ───────────────────────────────────────────
+// Shared by onConnectEnd so handle positions match rendered nodes (including rotation).
+
+function parseDim(value) {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && value.endsWith('px')) return parseInt(value, 10);
+  return null;
+}
+
+function getComponentRotation(node) {
+  return node?.data?.rotation ?? 0;
+}
+
+function getNodeSize(node) {
+  const ct = node?.data?.componentType;
+  const st = node?.data?.style || node?.style || {};
+
+  if (ct === 'junction') {
+    const junctionStyle = { ...NODE_STYLES.junction, ...st };
+    return {
+      w: parseDim(junctionStyle.width) || parseDim(junctionStyle.minWidth) || 10,
+      h: parseDim(junctionStyle.height) || parseDim(junctionStyle.minHeight) || 10,
+    };
+  }
+
+  if (ct === 'ground') {
+    const groundStyle = { ...NODE_STYLES.ground, ...st };
+    return {
+      w: parseDim(groundStyle.width) || parseDim(groundStyle.minWidth) || 44,
+      h: parseDim(groundStyle.height) || parseDim(groundStyle.minHeight) || 52,
+    };
+  }
+
+  if (node?.width && node?.height) {
+    return { w: node.width, h: node.height };
+  }
+
+  const rotation = getComponentRotation(node);
+  const isVertical = ct === 'current_source'
+    ? (rotation === 0 || rotation === 180)
+    : (rotation === 90 || rotation === 270);
+
+  const baseStyle = { ...NODE_STYLES.base, ...st };
+  const nativeW = parseDim(baseStyle.minWidth) || parseDim(baseStyle.width) || 80;
+  const nativeH = parseDim(baseStyle.minHeight) || parseDim(baseStyle.height)
+    || (ct === 'current_source' ? 90 : 52);
+
+  return {
+    w: isVertical ? nativeW : nativeH,
+    h: isVertical ? nativeH : nativeW,
+  };
+}
+
+function positionToCoords(position, nx, ny, w, h) {
+  switch (position) {
+    case Position.Left:   return { x: nx, y: ny + h / 2 };
+    case Position.Right:  return { x: nx + w, y: ny + h / 2 };
+    case Position.Top:    return { x: nx + w / 2, y: ny };
+    case Position.Bottom: return { x: nx + w / 2, y: ny + h };
+    default:              return { x: nx + w / 2, y: ny + h / 2 };
+  }
+}
+
+function getHandleIdToPosition(node, handleId) {
+  const ct = node?.data?.componentType;
+  const rotation = getComponentRotation(node);
+  const normalizedRotation = ((rotation % 360) + 360) % 360;
+
+  if (ct === 'junction' || ct === 'ground') {
+    const map = {
+      left: Position.Left,
+      right: Position.Right,
+      top: Position.Top,
+      bottom: Position.Bottom,
+    };
+    return map[handleId] ?? Position.Top;
+  }
+
+  if (ct === 'current_source') {
+    const currentSourcePositions = {
+      0: { left: Position.Top, right: Position.Bottom },
+      90: { left: Position.Right, right: Position.Left },
+      180: { left: Position.Bottom, right: Position.Top },
+      270: { left: Position.Left, right: Position.Right },
+    };
+    const positions = currentSourcePositions[normalizedRotation] ?? currentSourcePositions[0];
+    return handleId === 'right' ? positions.right : positions.left;
+  }
+
+  const { left, right } = getHandlePositions(normalizedRotation);
+  return handleId === 'right' ? right : left;
+}
+
+function getHandlePos(node, handleId) {
+  const nx = node.positionAbsolute?.x ?? node.position.x;
+  const ny = node.positionAbsolute?.y ?? node.position.y;
+  const { w, h } = getNodeSize(node);
+  const position = getHandleIdToPosition(node, handleId);
+  return positionToCoords(position, nx, ny, w, h);
+}
+
+/** Center (jx, jy) and size — compute a junction handle's flow position before render. */
+function getJunctionHandlePos(centerX, centerY, jWidth, jHeight, handleId) {
+  const nx = centerX - jWidth / 2;
+  const ny = centerY - jHeight / 2;
+  const position = getHandleIdToPosition(
+    { data: { componentType: 'junction' } },
+    handleId
+  );
+  return positionToCoords(position, nx, ny, jWidth, jHeight);
+}
+
+/** Classify wire as horizontal or vertical from endpoint handle positions. */
+function isWireHorizontal(srcPos, tgtPos) {
+  return Math.abs(tgtPos.x - srcPos.x) >= Math.abs(tgtPos.y - srcPos.y);
+}
+
+function pickClosestHandle(candidateIds, anchor, centerX, centerY, jWidth, jHeight) {
+  let bestId = candidateIds[0];
+  let bestDist = Infinity;
+  candidateIds.forEach((handleId) => {
+    const hp = getJunctionHandlePos(centerX, centerY, jWidth, jHeight, handleId);
+    const d = Math.hypot(anchor.x - hp.x, anchor.y - hp.y);
+    if (d < bestDist) {
+      bestDist = d;
+      bestId = handleId;
+    }
+  });
+  return bestId;
+}
+
 // ── Value formatting ──────────────────────────────────────────────────────────
 function formatValue(value, type) {
   if (type === 'resistor') {
@@ -537,22 +668,31 @@ function ComponentNode({ id, data, mode }) {
 }
 
 // ── JunctionNode / GroundNode ─────────────────────────────────────────────────
-function JunctionNode({ data }) {
+function JunctionNode({ data, style }) {
+  // Allow explicit handle position overrides from data.handlePositions
+  // This ensures through-handles maintain wire trajectory without zigzags
+  const handlePositions = data?.handlePositions || {
+    left: Position.Left,
+    right: Position.Right,
+    top: Position.Top,
+    bottom: Position.Bottom,
+  };
+  
   return (
-    <div className="circuit-node circuit-node-junction" style={data.style}>
-      <Handle type="source" position={Position.Left}   id="left"   className="circuit-handle" />
-      <Handle type="source" position={Position.Right}  id="right"  className="circuit-handle" />
-      <Handle type="source" position={Position.Top}    id="top"    className="circuit-handle" />
-      <Handle type="source" position={Position.Bottom} id="bottom" className="circuit-handle" />
+    <div className="circuit-node circuit-node-junction" style={data?.style || style}>
+      <Handle type="source" position={handlePositions.left}   id="left"   className="circuit-handle" />
+      <Handle type="source" position={handlePositions.right}  id="right"  className="circuit-handle" />
+      <Handle type="source" position={handlePositions.top}    id="top"    className="circuit-handle" />
+      <Handle type="source" position={handlePositions.bottom} id="bottom" className="circuit-handle" />
       <div className="junction-dot" />
     </div>
   );
 }
 
 // ── GroundNode ─────────────────────────────────────────────────────────────
-function GroundNode({ data }) {
+function GroundNode({ data, style }) {
   return (
-    <div className="circuit-node circuit-node-ground" style={data.style}>
+    <div className="circuit-node circuit-node-ground" style={data?.style || style}>
       {/* Single connection handle at the top of the ground symbol */}
       <Handle type="source" position={Position.Top} id="top" className="circuit-handle" />
       <svg
@@ -721,30 +861,13 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       const { clientX, clientY } = event;
       const position = instance.screenToFlowPosition({ x: clientX, y: clientY });
 
-      // ── Compute the pixel position of a node's handle ─────────────────────
-      const getHandlePos = (node, handleId) => {
-        const nx = node.positionAbsolute?.x ?? node.position.x;
-        const ny = node.positionAbsolute?.y ?? node.position.y;
-        const w  = node.width  ?? (node.data?.componentType === 'junction' ? 8 : 80);
-        const h  = node.height ?? (node.data?.componentType === 'ground'   ? 60 : 50);
-        switch (handleId) {
-          case 'left':   return { x: nx,        y: ny + h / 2 };
-          case 'right':  return { x: nx + w,     y: ny + h / 2 };
-          case 'top':    return { x: nx + w / 2, y: ny         };
-          case 'bottom': return { x: nx + w / 2, y: ny + h     };
-          default:       return { x: nx + w / 2, y: ny + h / 2 };
-        }
-      };
-
       // ── Find the nearest wire to the drop point ───────────────────────────
-      // Threshold is generous (80 px) so users don't have to click precisely.
       const THRESHOLD = 80;
       let nearestEdge  = null;
       let minDistance  = Infinity;
       let nearestPoint = null;
 
       edges.forEach(edge => {
-        // Don't try to split an edge that belongs to the node being connected
         if (edge.source === startNodeId || edge.target === startNodeId) return;
 
         const srcNode = nodes.find(n => n.id === edge.source);
@@ -778,64 +901,94 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         return;
       }
 
-      // ── Snap junction to grid ─────────────────────────────────────────────
+      const srcNode = nodes.find(n => n.id === nearestEdge.source);
+      const tgtNode = nodes.find(n => n.id === nearestEdge.target);
+      const srcPos  = getHandlePos(srcNode, nearestEdge.sourceHandle);
+      const tgtPos  = getHandlePos(tgtNode, nearestEdge.targetHandle);
+      const horizontal = isWireHorizontal(srcPos, tgtPos);
+
       const SNAP = 10;
-      const jx = Math.round(nearestPoint.x / SNAP) * SNAP;
-      const jy = Math.round(nearestPoint.y / SNAP) * SNAP;
+      const { w: jWidth, h: jHeight } = getNodeSize({ data: { componentType: 'junction' }, style: NODE_STYLES.junction });
+
+      // Snap only the axis perpendicular to the wire so the junction stays on-line.
+      const jx = horizontal
+        ? Math.round(nearestPoint.x / SNAP) * SNAP
+        : nearestPoint.x;
+      const jy = horizontal
+        ? nearestPoint.y
+        : Math.round(nearestPoint.y / SNAP) * SNAP;
 
       const junctionId = `junction_auto_${Date.now()}`;
       const isGroundNode = startNode?.data?.componentType === 'ground';
-      const WIRE_STYLE       = { stroke: WIRE_COLOR,        strokeWidth: 2 };
-      const GND_WIRE_STYLE   = { stroke: GROUND_WIRE_COLOR, strokeWidth: 2 };
-      const WIRE_OPTS  = { pathOptions: { borderRadius: 0 } };
+      const WIRE_STYLE     = { stroke: WIRE_COLOR,        strokeWidth: 2 };
+      const GND_WIRE_STYLE = { stroke: GROUND_WIRE_COLOR, strokeWidth: 2 };
+      const WIRE_OPTS      = { pathOptions: { borderRadius: 0 } };
 
-      // Determine which handle on the connecting component faces the junction.
-      // startHandleId is the handle that was being dragged from.
       const connectingHandle = startHandleId ?? 'left';
+      const connectingAnchor = getHandlePos(startNode, connectingHandle);
+
+      // Through handles follow the original wire axis; branch uses the perpendicular pair.
+      const throughHandles = horizontal ? ['left', 'right'] : ['top', 'bottom'];
+      const branchCandidates = horizontal ? ['top', 'bottom'] : ['left', 'right'];
+
+      const junctionToSrcHandle = horizontal
+        ? (srcPos.x < jx ? throughHandles[0] : throughHandles[1])
+        : (srcPos.y < jy ? throughHandles[0] : throughHandles[1]);
+      const junctionToTgtHandle = junctionToSrcHandle === throughHandles[0]
+        ? throughHandles[1]
+        : throughHandles[0];
+
+      const connectingJunctionHandle = pickClosestHandle(
+        branchCandidates,
+        connectingAnchor,
+        jx,
+        jy,
+        jWidth,
+        jHeight
+      );
+
+      // Build explicit handle position map to prevent zigzags.
+      // Through-handles (continuing the original wire) must align with wire orientation.
+      // Branch handles use the perpendicular axis.
+      const junctionHandlePositions = {};
+      if (horizontal) {
+        // Original wire is horizontal → through-handles are left/right
+        junctionHandlePositions.left = Position.Left;
+        junctionHandlePositions.right = Position.Right;
+        junctionHandlePositions.top = Position.Top;
+        junctionHandlePositions.bottom = Position.Bottom;
+      } else {
+        // Original wire is vertical → through-handles are top/bottom
+        junctionHandlePositions.top = Position.Top;
+        junctionHandlePositions.bottom = Position.Bottom;
+        junctionHandlePositions.left = Position.Left;
+        junctionHandlePositions.right = Position.Right;
+      }
 
       setNodes(nds => [
         ...nds,
         {
           id:   junctionId,
           type: 'junctionNode',
-          position: { x: jx - 5, y: jy - 5 },
-          data: { label: '●', componentType: 'junction', componentId: junctionId },
+          position: { x: jx - jWidth / 2, y: jy - jHeight / 2 },
+          data: {
+            label: '●',
+            componentType: 'junction',
+            componentId: junctionId,
+            style: NODE_STYLES.junction,
+            handlePositions: junctionHandlePositions,
+          },
           style: NODE_STYLES.junction,
         },
       ]);
 
       setEdges(eds => {
         const filtered = eds.filter(e => e.id !== nearestEdge.id);
-        
-        // Preserve the original edge style
         const originalStyle = nearestEdge.style || WIRE_STYLE;
         const originalType = nearestEdge.type || 'smoothstep';
-        
-        // Smart handle assignment: determine which junction handles to use
-        // based on the geometry to minimize wire rerouting
-        const srcNode = nodes.find(n => n.id === nearestEdge.source);
-        const tgtNode = nodes.find(n => n.id === nearestEdge.target);
-        const srcPos = getHandlePos(srcNode, nearestEdge.sourceHandle);
-        const tgtPos = getHandlePos(tgtNode, nearestEdge.targetHandle);
-        
-        // Junction is between source and target - use handles that align with wire direction
-        const isHorizontal = Math.abs(tgtPos.x - srcPos.x) > Math.abs(tgtPos.y - srcPos.y);
-        const junctionToSrcHandle = isHorizontal 
-          ? (srcPos.x < jx ? 'left' : 'right')
-          : (srcPos.y < jy ? 'top' : 'bottom');
-        const junctionToTgtHandle = isHorizontal
-          ? (tgtPos.x > jx ? 'right' : 'left')
-          : (tgtPos.y > jy ? 'bottom' : 'top');
-        
-        // For the connecting component: use the opposite direction
-        const availableJunctionHandles = ['left', 'right', 'top', 'bottom'].filter(
-          h => h !== junctionToSrcHandle && h !== junctionToTgtHandle
-        );
-        const connectingJunctionHandle = availableJunctionHandles[0] || 'bottom';
-        
+
         return [
           ...filtered,
-          // Segment 1: original source → junction (preserve original edge properties)
           {
             id:           `e_${nearestEdge.source}_${junctionId}_${Date.now()}`,
             source:       nearestEdge.source,
@@ -846,7 +999,6 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
             style:        originalStyle,
             ...WIRE_OPTS,
           },
-          // Segment 2: junction → original target (preserve original edge properties)
           {
             id:           `e_${junctionId}_${nearestEdge.target}_${Date.now()}`,
             source:       junctionId,
@@ -857,7 +1009,6 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
             style:        originalStyle,
             ...WIRE_OPTS,
           },
-          // New wire: connecting component → junction
           {
             id:           `e_${startNodeId}_${junctionId}_${Date.now()}`,
             source:       startNodeId,
