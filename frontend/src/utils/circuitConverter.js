@@ -266,12 +266,22 @@ export function convertCircuitToBackendFormat(nodes, edges) {
   if (!allElecNodes.has('0')) throw new Error('Ground is not connected to the circuit!');
 
   // Extract design_values (nominal component values) for ML inference
-  // This ensures the model compares against THIS circuit's intended values,
-  // not a different circuit's values via topology matching.
+  // CRITICAL: design_values must be the ORIGINAL/INTENDED values when the
+  // circuit was first designed, NOT the current (potentially faulty) values.
+  // 
+  // The frontend must preserve comp.data.nominalValue (set when component is
+  // first dropped) and never update it when the user edits comp.data.value.
+  // This allows the ML model to compute deviation = (actual - nominal) / nominal.
   const designValues = {};
   nonMeters.forEach(comp => {
     if (comp.type === 'resistor' || comp.type === 'capacitor' || comp.type === 'inductor' || comp.type === 'current_source') {
-      designValues[comp.id] = comp.value;
+      // Use nominalValue if available (set when component first created),
+      // otherwise fall back to current value (for backwards compatibility)
+      const compNode = nodes.find(n => 
+        (n.data?.componentId || n.data?.label || n.id).replace(/[^\x00-\x7F]/g, '').trim() === comp.id
+      );
+      const nominalValue = compNode?.data?.nominalValue;
+      designValues[comp.id] = nominalValue !== undefined ? nominalValue : comp.value;
     }
   });
 

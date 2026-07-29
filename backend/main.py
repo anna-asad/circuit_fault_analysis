@@ -250,6 +250,33 @@ async def simulate_circuit(circuit: CircuitModel):
     try:
         circuit_dict = circuit.model_dump()
         
+        print("\n" + "📡"*40)
+        print("API REQUEST RECEIVED - /api/simulate")
+        print("📡"*40)
+        print(f"\n🔍 Circuit Data from Frontend:")
+        print(f"   Number of components: {len(circuit_dict.get('components', []))}")
+        
+        # Extract component_values for logging
+        component_values_received = {}
+        for comp in circuit_dict.get("components", []):
+            if comp.get("type") in ("resistor", "capacitor", "inductor", "current_source"):
+                component_values_received[comp.get("id")] = comp.get("value")
+        
+        print(f"   component_values (actual): {component_values_received}")
+        print(f"   design_values: {circuit_dict.get('design_values')}")
+        print(f"   design_values is None: {circuit_dict.get('design_values') is None}")
+        
+        if circuit_dict.get('design_values'):
+            print(f"   design_values == component_values: {circuit_dict.get('design_values') == component_values_received}")
+            if circuit_dict.get('design_values') != component_values_received:
+                print(f"\n   ⚠️  DIFFERENCE DETECTED:")
+                for comp_id in set(list(component_values_received.keys()) + list(circuit_dict.get('design_values', {}).keys())):
+                    actual = component_values_received.get(comp_id)
+                    design = circuit_dict.get('design_values', {}).get(comp_id)
+                    if actual != design:
+                        print(f"      {comp_id}: actual={actual}, design={design}")
+        print("📡"*40 + "\n")
+        
         # Ensure all component values are not None to prevent comparison errors
         for comp in circuit_dict.get("components", []):
             if comp.get("value") is None:
