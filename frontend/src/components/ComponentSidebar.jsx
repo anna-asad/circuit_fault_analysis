@@ -1,12 +1,12 @@
 import './ComponentSidebar.css';
 
 const components = [
-  { type: 'dc_source',      label: 'DC Voltage',     icon: '⚡',  unit: 'V' },
-  { type: 'current_source', label: 'Current Source',  icon: '⬆',  unit: 'A' },
+  { type: 'dc_source',      label: 'Battery',        icon: '🔋', unit: 'V' },
+  { type: 'current_source', label: 'Current Source',  icon: '⚡',  unit: 'A' },
   { type: 'resistor',       label: 'Resistor',        icon: '♒︎', unit: 'Ω' },
   { type: 'capacitor',      label: 'Capacitor',       icon: '||', unit: 'F' },
   { type: 'inductor',       label: 'Inductor',        icon: '~~~', unit: 'H' },
-  { type: 'switch',         label: 'Switch',          icon: '⏻',  unit: '', hint: 'Open/closed toggle' },
+  { type: 'switch',         label: 'Switch',          icon: '🕹️',  unit: '', hint: 'Open/closed toggle' },
   { type: 'bulb',           label: 'Bulb',            icon: '💡', unit: 'Ω' },
   { type: 'ammeter',        label: 'Ammeter',         icon: 'Ⓐ',  unit: 'A', hint: 'Wire in series' },
   { type: 'voltmeter',      label: 'Voltmeter',       icon: 'Ⓥ',  unit: 'V', hint: 'Wire in parallel' },
