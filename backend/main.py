@@ -12,6 +12,7 @@ from netlist_generator import generate_netlist
 from simulation_runner import SimulationRunner
 from structural_faults import detect_structural_faults
 from fault_analyzer import FaultAnalyzer
+from rag import explain_fault
 
 log = logging.getLogger(__name__)
 
@@ -102,6 +103,12 @@ class CircuitModel(BaseModel):
         default=None,
         description="Nominal component values for this circuit: {component_id: nominal_value}"
     )
+
+
+class ExplainRequest(BaseModel):
+    """Request model for fault explanation endpoint."""
+    fault_type: str = Field(..., description="Type of fault to explain")
+    component: str = Field(..., description="Component ID or type")
 
 
 class SimulationResponse(BaseModel):
@@ -499,6 +506,19 @@ async def validate_circuit(circuit: CircuitModel):
         
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/explain-fault")
+async def explain_fault_endpoint(req: ExplainRequest):
+    """
+    Get RAG-based explanation for a specific fault type and component.
+    Uses the embedded circuit analysis textbook to provide detailed explanations.
+    """
+    try:
+        explanation = explain_fault(req.fault_type, req.component)
+        return {"explanation": explanation}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================
