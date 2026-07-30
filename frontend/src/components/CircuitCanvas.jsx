@@ -8,6 +8,7 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   addEdge,
+  useUpdateNodeInternals,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './CircuitCanvas.css';
@@ -536,6 +537,19 @@ function NodeTerminals({ rotation = 0, componentType }) {
 // ── ComponentNode ─────────────────────────────────────────────────────────────
 function ComponentNode({ id, data, mode }) {
   const rotation = data.rotation ?? 0;
+  const updateNodeInternals = useUpdateNodeInternals();
+  
+  // Update React Flow internals when rotation changes (after render commits)
+  // Skip the initial render by using useRef to track if it's the first mount
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    // Rotation has changed - notify React Flow to recalculate handle positions
+    updateNodeInternals(id);
+  }, [rotation, id, updateNodeInternals]);
   
   // For current_source the native orientation is vertical (SVG viewBox is portrait).
   // isVertical = true  → component is in its natural portrait orientation (0°/180°)
@@ -568,15 +582,6 @@ function ComponentNode({ id, data, mode }) {
     height: isVertical ? '100%' : '32px',
   };
 
-  const currentSourceContentStyle = data.componentType === 'current_source' ? {
-    transform: `rotate(${rotation}deg)`,
-    transformOrigin: 'center center',
-    transition: 'transform 0.15s ease',
-    position: 'relative',
-    width: '100%',
-    height: '100%',
-  } : undefined;
-
   // Apply compact styling for vertical orientation
   const valueButtonStyle = isVertical ? { fontSize: '9px', maxWidth: '100%' } : {};
   const labelStyle = isVertical ? { fontSize: '9px', maxWidth: '100%' } : {};
@@ -585,9 +590,9 @@ function ComponentNode({ id, data, mode }) {
     return (
       <div className="circuit-node circuit-node-component" style={nodeStyle}>
         <div className="circuit-node-content component-content">
-          <div style={data.componentType === 'current_source' ? currentSourceContentStyle : undefined}>
+          <div>
             <NodeTerminals rotation={rotation} componentType={data.componentType} />
-            <div className="component-visual-container" style={data.componentType === 'current_source' ? undefined : visualContainerStyle}>
+            <div className="component-visual-container" style={visualContainerStyle}>
               <div className="component-svg-fallback visible">
                 {renderComponentGraphic(data.componentType, data.state)}
               </div>
@@ -605,10 +610,10 @@ function ComponentNode({ id, data, mode }) {
       <div className="circuit-node-content component-content">
         {/* Component reference label (R1, C2, V1 …) — stacking context ensures visibility */}
         <div className="component-ref-label" style={labelStyle}>{label}</div>
-        <div style={componentType === 'current_source' ? currentSourceContentStyle : undefined}>
+        <div>
           <NodeTerminals rotation={rotation} componentType={componentType} />
           {/* SVG symbol rotates; container becomes portrait box at 90°/270° */}
-          <div className="component-visual-container" style={componentType === 'current_source' ? undefined : visualContainerStyle}>
+          <div className="component-visual-container" style={visualContainerStyle}>
             <div className="component-svg-fallback visible">
               {componentType === 'switch' 
                 ? (data.state === 'closed' ? COMPONENT_SVGS.switch_closed : COMPONENT_SVGS.switch_open)
