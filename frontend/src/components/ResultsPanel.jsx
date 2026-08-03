@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import './ResultsPanel.css';
 import { buildAllCards } from '../utils/componentCards';
+import axios from 'axios';
 
 // ── ML helpers ────────────────────────────────────────────────────────────────
 const LABEL_DISPLAY = {
@@ -70,9 +71,45 @@ function ComponentCard({ card }) {
 }
 
 // ── ML section (shared between all-clear and expanded) ────────────────────────
-function MlSection({ pattern_faults }) {
+function MlSection({ pattern_faults, components }) {
+  const [aiExplanation, setAiExplanation] = useState(null);
+  const [loadingExplanation, setLoadingExplanation] = useState(false);
+  const [explanationError, setExplanationError] = useState(null);
+
   if (!pattern_faults) return null;
+  
   const isNormal = String(pattern_faults.predicted_fault ?? '').toLowerCase() === 'normal';
+  
+  // Debug logging
+  console.log('🔍 MlSection Debug:');
+  console.log('  pattern_faults:', pattern_faults);
+  console.log('  predicted_fault:', pattern_faults.predicted_fault);
+  console.log('  isNormal:', isNormal);
+  console.log('  components:', components);
+  console.log('  Should show button:', !isNormal);
+  
+  // Get component type from the first non-ground component for explanation context
+  const componentType = components?.find(c => c.type !== 'ground')?.type || 'circuit';
+  
+  const handleExplainFault = async () => {
+    setLoadingExplanation(true);
+    setExplanationError(null);
+    
+    try {
+      const response = await axios.post('http://localhost:8000/api/explain-fault', {
+        fault_type: pattern_faults.predicted_fault || 'unknown',
+        component: componentType
+      });
+      
+      setAiExplanation(response.data.explanation);
+    } catch (error) {
+      console.error('Failed to get AI explanation:', error);
+      setExplanationError('Failed to get explanation. Please try again.');
+    } finally {
+      setLoadingExplanation(false);
+    }
+  };
+  
   return (
     <section className="result-section">
       <h4 className="section-title">ML Fault Classification</h4>
@@ -84,6 +121,40 @@ function MlSection({ pattern_faults }) {
           </span>
         </div>
         <p className="ml-description">{pattern_faults.description}</p>
+        
+        {/* DEBUG: Force button to always show temporarily */}
+        {true && (
+          <div className="ai-explain-section">
+            <p style={{fontSize: '10px', color: 'red'}}>
+              DEBUG: isNormal={String(isNormal)}, predicted_fault={String(pattern_faults.predicted_fault)}
+            </p>
+            <button
+              type="button"
+              className="ai-explain-button"
+              onClick={handleExplainFault}
+              disabled={loadingExplanation}
+            >
+              {loadingExplanation ? '🤔 Thinking...' : '🤖 Explain with AI'}
+            </button>
+            
+            {aiExplanation && (
+              <div className="ai-explanation-box">
+                <div className="ai-explanation-header">
+                  <span className="ai-icon">✨</span>
+                  <strong>AI Explanation</strong>
+                </div>
+                <p className="ai-explanation-text">{aiExplanation}</p>
+              </div>
+            )}
+            
+            {explanationError && (
+              <div className="ai-explanation-error">
+                {explanationError}
+              </div>
+            )}
+          </div>
+        )}
+        
         {!isNormal && pattern_faults.all_probabilities &&
           Object.keys(pattern_faults.all_probabilities).length > 0 && (
           <div className="ml-probs">
@@ -270,7 +341,7 @@ function ResultsPanel({ results }) {
               />
               <DriftWarningsSection drift_warnings={driftWarnings} />
               <FaultsSection structural_faults={structural_faults} />
-              <MlSection pattern_faults={pattern_faults} />
+              <MlSection pattern_faults={pattern_faults} components={components} />
             </div>
           )}
         </div>
@@ -291,7 +362,7 @@ function ResultsPanel({ results }) {
         />
         <DriftWarningsSection drift_warnings={driftWarnings} />
         <FaultsSection structural_faults={structural_faults} />
-        <MlSection pattern_faults={pattern_faults} />
+        <MlSection pattern_faults={pattern_faults} components={components} />
       </div>
     </aside>
   );

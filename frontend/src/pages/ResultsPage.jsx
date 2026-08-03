@@ -2,6 +2,7 @@ import { useState } from 'react';
 import './ResultsPage.css';
 import CircuitCanvas from '../components/CircuitCanvas';
 import { buildAllCards } from '../utils/componentCards';
+import axios from 'axios';
 
 const STRUCTURAL_STATUS_RULES = [
   { pattern: /short circuit/i, title: 'Short Circuit' },
@@ -82,6 +83,31 @@ function ResultsPage({ results, onBack, circuit }) {
   const [cardsOpen, setCardsOpen] = useState(true);
   const [faultsOpen, setFaultsOpen] = useState(true);
   const [mlOpen, setMlOpen] = useState(true);
+  
+  // AI Explanation state
+  const [aiExplanation, setAiExplanation] = useState(null);
+  const [loadingExplanation, setLoadingExplanation] = useState(false);
+  const [explanationError, setExplanationError] = useState(null);
+
+  const handleExplainFault = async (faultType, components) => {
+    setLoadingExplanation(true);
+    setExplanationError(null);
+    
+    try {
+      const componentType = components?.find(c => c.type !== 'ground')?.type || 'circuit';
+      const response = await axios.post('http://localhost:8000/api/explain-fault', {
+        fault_type: faultType || 'unknown',
+        component: componentType
+      });
+      
+      setAiExplanation(response.data.explanation);
+    } catch (error) {
+      console.error('Failed to get AI explanation:', error);
+      setExplanationError('Failed to get explanation. Please try again.');
+    } finally {
+      setLoadingExplanation(false);
+    }
+  };
 
   if (!results) {
     return (
@@ -370,6 +396,70 @@ const bulbStateMap = new Map(
                       </span>
                     </div>
                     <p className="ml-desc-page">{pattern_faults.description}</p>
+                    
+                    {/* AI Explanation Button - only show for non-normal faults */}
+                    {!isNormalML && (
+                      <div className="ai-explain-section" style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                        <button
+                          type="button"
+                          className="ai-explain-button"
+                          onClick={() => handleExplainFault(pattern_faults.predicted_fault, components)}
+                          disabled={loadingExplanation}
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            border: 'none',
+                            borderRadius: '6px',
+                            color: 'white',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            cursor: loadingExplanation ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.2s ease',
+                            boxShadow: '0 2px 4px rgba(102, 126, 234, 0.2)',
+                            opacity: loadingExplanation ? 0.7 : 1
+                          }}
+                        >
+                          {loadingExplanation ? '🤔 Thinking...' : '🤖 Explain with AI'}
+                        </button>
+                        
+                        {aiExplanation && (
+                          <div style={{
+                            marginTop: '10px',
+                            padding: '12px',
+                            background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)',
+                            border: '1px solid #c4b5fd',
+                            borderRadius: '8px',
+                            animation: 'fadeIn 0.3s ease-in'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                              <span style={{ fontSize: '14px' }}>✨</span>
+                              <strong style={{ fontSize: '11px', color: '#5b21b6', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                AI Explanation
+                              </strong>
+                            </div>
+                            <p style={{ fontSize: '12px', color: '#4c1d95', lineHeight: '1.6', margin: 0 }}>
+                              {aiExplanation}
+                            </p>
+                          </div>
+                        )}
+                        
+                        {explanationError && (
+                          <div style={{
+                            marginTop: '8px',
+                            padding: '8px 10px',
+                            background: '#fef2f2',
+                            border: '1px solid #fecaca',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            color: '#991b1b'
+                          }}>
+                            {explanationError}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
                     {!isNormalML && pattern_faults.all_probabilities &&
                       Object.keys(pattern_faults.all_probabilities).length > 0 && (
                       <div className="ml-probs-page">
