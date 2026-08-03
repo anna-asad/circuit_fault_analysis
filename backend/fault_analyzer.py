@@ -147,7 +147,14 @@ class FaultAnalyzer:
 
     def __init__(self):
         self.model_loaded = ML_MODEL_AVAILABLE
-        if self.model_loaded:
+        self._clf = None
+        self._feature_cols = None
+        self._label_cols = None
+        self._nominal_lookup = None
+    
+    def _ensure_loaded(self):
+        """Lazy load model files only when first needed."""
+        if self.model_loaded and self._clf is None:
             self._clf            = joblib.load(REQUIRED_FILES["classifier"])
             self._feature_cols   = joblib.load(REQUIRED_FILES["feature_columns"])
             self._label_cols     = joblib.load(REQUIRED_FILES["label_columns"])
@@ -162,6 +169,8 @@ class FaultAnalyzer:
     ) -> Dict:
         if not self.model_loaded:
             return self._unavailable_response()
+        
+        self._ensure_loaded()
 
         component_values: Dict[str, float] = {}
         for comp in circuit_data.get("components", []):

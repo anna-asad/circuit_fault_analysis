@@ -24,16 +24,11 @@ app = FastAPI(
 
 _fault_analyzer: FaultAnalyzer = None
 
-@app.on_event("startup")
-async def load_models():
-    global _fault_analyzer
-    _fault_analyzer = FaultAnalyzer()
-    if _fault_analyzer.is_model_loaded():
-        log.info("ML model loaded")
-    else:
-        log.warning("ML model not available — run python src/train.py")
-
 def get_fault_analyzer() -> FaultAnalyzer:
+    """Lazy load fault analyzer only when first simulation is run."""
+    global _fault_analyzer
+    if _fault_analyzer is None:
+        _fault_analyzer = FaultAnalyzer()
     return _fault_analyzer
 
 # CORS
@@ -499,13 +494,13 @@ async def explain_fault_endpoint(req: ExplainRequest):
 # ============================================================================
 
 if __name__ == "__main__":
-    print("🚀 Starting Circuit Fault Detector API...")
-    print("📡 API documentation: http://localhost:8000/docs")
-    print("🔍 Health check: http://localhost:8000/api/health")
+    print("Starting Circuit Fault Detector API...")
+    print("API documentation: http://localhost:8000/docs")
+    print("Health check: http://localhost:8000/api/health")
     
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True  # Auto-reload on code changes
+        reload=True
     )
