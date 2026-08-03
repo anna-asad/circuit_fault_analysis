@@ -394,3 +394,12 @@
   font-size: 11px;
   color: #991b1b;
 }
+
+.ai-explanation-box-inline {
+  margin-top: 10px;
+  padding: 12px;
+  background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+  border: 1px solid #c4b5fd;
+  border-radius: 8px;
+  animation: fadeIn 0.3s ease-in;
+}

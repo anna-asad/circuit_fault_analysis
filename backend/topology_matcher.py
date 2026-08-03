@@ -130,12 +130,7 @@ def find_matching_topology(
             if mapping:
                 candidates.append((nominal_key, mapping))
     
-    # Return first match (warn if multiple matches)
-    if len(candidates) > 1:
-        print(f"⚠️  Multiple topology matches found ({len(candidates)}). Using first match.")
-        print(f"    This may indicate ambiguous circuit topology.")
-        print(f"    Matches: {[sorted(k) for k, _ in candidates]}")
-    
+    # Return first match
     return candidates[0] if candidates else None
 
 

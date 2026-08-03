@@ -42,75 +42,34 @@ def _extract_features(
     
     IMPORTANT: Feature names and order MUST match train.py's extract_features()
     exactly. Any mismatch will cause prediction errors.
-    
-    NOTE: comp_mean, comp_std, comp_max, comp_min were removed because they
-    incorrectly mixed different units (ohms, amps, volts, farads, henries)
-    into single meaningless statistics.
     """
-    print("\n" + "="*80)
-    print("🔍 FEATURE EXTRACTION DEBUG")
-    print("="*80)
-    
     volts    = list(node_voltages.values())
     currs    = list(branch_currents.values())
     curr_abs = np.abs(currs)
 
-    # Match train.py's n_passive calculation exactly
     n_passive = sum(
         1 for name in component_values
         if not (name.upper().startswith("V") or name.upper().startswith("I"))
     )
-
-    # Use design_values if provided (circuit-specific nominals), otherwise
-    # fall back to topology matching with global nominal_lookup
-    print(f"\n📦 Input Data:")
-    print(f"   component_values: {component_values}")
-    print(f"   design_values: {design_values}")
-    print(f"   design_values provided: {design_values is not None}")
     
     if design_values:
         nominal = design_values
-        print(f"   ✅ Using design_values (circuit-specific nominals)")
     else:
         nominal, _ = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
-        print(f"   ⚠️  Falling back to topology matching")
-    
-    print(f"   nominal values used: {nominal}")
 
     deviations = []
-    deviation_details = []
     for name, val in component_values.items():
         nom = nominal.get(name)
         if nom and nom != 0:
             dev = abs(val - nom) / abs(nom)
             deviations.append(dev)
-            deviation_details.append({
-                "component": name,
-                "actual": val,
-                "nominal": nom,
-                "deviation": dev,
-                "deviation_pct": dev * 100
-            })
-    
-    print(f"\n📊 Deviation Analysis:")
-    for detail in sorted(deviation_details, key=lambda x: x["deviation"], reverse=True):
-        print(f"   {detail['component']}: actual={detail['actual']:.4g}, "
-              f"nominal={detail['nominal']:.4g}, "
-              f"deviation={detail['deviation_pct']:.1f}%")
 
     deviations_sorted = sorted(deviations, reverse=True)
     max_dev    = deviations_sorted[0] if deviations_sorted else 0.0
     second_dev = deviations_sorted[1] if len(deviations_sorted) > 1 else 0.0
     dev_ratio  = second_dev / max_dev if max_dev > 0 else 0.0
     n_over_20  = sum(d > 0.20 for d in deviations)
-    
-    print(f"\n🎯 Key Deviation Features:")
-    print(f"   max_deviation_ratio: {max_dev:.4f} ({max_dev*100:.1f}%)")
-    print(f"   second_deviation_ratio: {second_dev:.4f} ({second_dev*100:.1f}%)")
-    print(f"   n_components_deviated_over_20pct: {n_over_20}")
-    print(f"   deviation_ratio_2nd_over_1st: {dev_ratio:.4f}")
 
-    # CRITICAL: Feature order MUST match train.py exactly
     features = {
         "n_components":                     len(component_values),
         "n_nodes":                          len(volts),
@@ -131,9 +90,6 @@ def _extract_features(
         "deviation_ratio_2nd_over_1st":     dev_ratio,
         "n_components_deviated_over_20pct": float(n_over_20),
     }
-    
-    print(f"\n✅ Extracted {len(features)} features")
-    print("="*80 + "\n")
     
     return features
 
@@ -207,26 +163,15 @@ class FaultAnalyzer:
         if not self.model_loaded:
             return self._unavailable_response()
 
-        print("\n" + "🔬"*40)
-        print("ML FAULT ANALYZER - RUNTIME TRACE")
-        print("🔬"*40)
-
         component_values: Dict[str, float] = {}
         for comp in circuit_data.get("components", []):
             ctype = comp.get("type", "")
             if ctype in ("resistor", "capacitor", "inductor", "current_source"):
                 component_values[comp.get("id", "")] = float(comp.get("value", 0))
 
-        print(f"\n📥 Inputs Received by analyzer.analyze():")
-        print(f"   component_values: {component_values}")
-        print(f"   design_values: {design_values}")
-        print(f"   design_values is None: {design_values is None}")
-        print(f"   design_values == component_values: {design_values == component_values if design_values else 'N/A'}")
-
         ground = circuit_data.get("ground", "0")
         signal_voltages = {k: v for k, v in node_voltages.items() if k != ground}
 
-        # Rule-based drift warnings (independent of ML)
         drift_warnings = _compute_drift_warnings(
             component_values, self._nominal_lookup, circuit_data, design_values
         )
@@ -247,13 +192,6 @@ class FaultAnalyzer:
             }
 
         result["drift_warnings"] = drift_warnings
-        
-        print(f"\n🎯 Final Prediction:")
-        print(f"   predicted_fault: {result['predicted_fault']}")
-        print(f"   confidence: {result['confidence']:.2%}")
-        print(f"   fault_type: {result['fault_type']}")
-        print("🔬"*40 + "\n")
-        
         return result
 
     def is_model_loaded(self) -> bool:
