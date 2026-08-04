@@ -3,6 +3,7 @@ import './ResultsPage.css';
 import CircuitCanvas from '../components/CircuitCanvas';
 import { buildAllCards } from '../utils/componentCards';
 import AIExplanation from '../components/AIExplanation';
+import html2canvas from 'html2canvas';
 
 const STRUCTURAL_STATUS_RULES = [
   { pattern: /short circuit/i, title: 'Short Circuit' },
@@ -91,7 +92,25 @@ function ResultsPage({ results, onBack, circuit }) {
     setIsGeneratingPDF(true);
     
     try {
-      // Use the circuit converter to get the proper backend format
+      // Step 1: Capture circuit diagram screenshot
+      const canvasContainer = document.querySelector('.results-canvas-container');
+      if (!canvasContainer) {
+        throw new Error('Circuit canvas not found');
+      }
+
+      console.log('Capturing circuit diagram...');
+      const canvas = await html2canvas(canvasContainer, {
+        backgroundColor: '#ffffff',
+        scale: 2, // Higher quality
+        logging: false,
+        useCORS: true
+      });
+      
+      // Convert to base64 image
+      const circuitImage = canvas.toDataURL('image/png');
+      console.log('Circuit diagram captured');
+
+      // Step 2: Prepare backend request
       const { convertCircuitToBackendFormat } = await import('../utils/circuitConverter.js');
       
       const backendCircuit = convertCircuitToBackendFormat(
@@ -99,10 +118,11 @@ function ResultsPage({ results, onBack, circuit }) {
         circuit.edges || []
       );
       
-      // Add circuit_id for tracking
+      // Add circuit_id and image
       backendCircuit.circuit_id = `circuit_${Date.now()}`;
+      backendCircuit.circuit_image = circuitImage;
       
-      console.log('Sending PDF report request:', backendCircuit);
+      console.log('Sending PDF report request with circuit image...');
       
       const response = await fetch('http://localhost:8000/api/generate-report-pdf', {
         method: 'POST',

@@ -103,6 +103,16 @@ class CircuitModel(BaseModel):
         default=None,
         description="Nominal component values for this circuit: {component_id: nominal_value}"
     )
+    # Circuit ID for tracking
+    circuit_id: Optional[str] = Field(
+        default=None,
+        description="Unique identifier for the circuit"
+    )
+    # Circuit diagram image (base64 encoded PNG)
+    circuit_image: Optional[str] = Field(
+        default=None,
+        description="Base64 encoded PNG image of the circuit diagram"
+    )
 
 
 class ExplainRequest(BaseModel):
@@ -555,7 +565,7 @@ async def generate_report_endpoint(circuit: CircuitModel):
             simulation_result=sim_result,
             ml_predictions=ml_predictions,
             nominal_values=circuit_dict.get("design_values"),
-            add_rag_explanations=True
+            add_explanations=True
         )
         
         # Convert to dict for JSON response
@@ -582,6 +592,7 @@ async def generate_report_pdf_endpoint(circuit: CircuitModel):
     
     Returns a human-readable PDF document with:
     - Executive summary with circuit status
+    - Circuit diagram (if provided)
     - Component snapshot table
     - Simulation results (voltages and currents)
     - Symbolic circuit analysis (KCL equations)
@@ -591,6 +602,9 @@ async def generate_report_pdf_endpoint(circuit: CircuitModel):
     """
     try:
         circuit_dict = circuit.model_dump()
+        
+        # Extract circuit image if provided
+        circuit_image_base64 = circuit_dict.pop('circuit_image', None)
         
         # Ensure all component values are not None
         for comp in circuit_dict.get("components", []):
@@ -638,14 +652,14 @@ async def generate_report_pdf_endpoint(circuit: CircuitModel):
             simulation_result=sim_result,
             ml_predictions=ml_predictions,
             nominal_values=circuit_dict.get("design_values"),
-            add_rag_explanations=True
+            add_explanations=True  # Use hardcoded explanations (no API calls)
         )
         
         # Generate PDF in temporary file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf", mode='wb')
         temp_file.close()
         
-        save_report_as_pdf(report, temp_file.name)
+        save_report_as_pdf(report, temp_file.name, circuit_image_base64=circuit_image_base64)
         
         # Return PDF file
         return FileResponse(

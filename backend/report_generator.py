@@ -27,11 +27,209 @@ try:
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
     from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Preformatted
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Preformatted, Image
     from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT, TA_JUSTIFY
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
+
+import base64
+import io
+import math
+
+
+# ============================================================================
+# Hardcoded Fault Explanations (replaces RAG/Gemini API calls)
+# ============================================================================
+
+FAULT_EXPLANATIONS = {
+    "partial_open": (
+        "A partial open fault can occur when unintended resistance builds up along "
+        "the internal path of {component_id}, restricting — but not fully blocking — "
+        "normal current flow. This is often caused by corrosion, a degraded solder "
+        "joint, or gradual internal damage from thermal or electrical stress. The "
+        "measured value of {actual_value} against a nominal {nominal_value} "
+        "(a {deviation} deviation) indicates {component_id} is operating well "
+        "outside its expected tolerance."
+    ),
+    "partial_short": (
+        "A partial short fault occurs when {component_id} develops an unintended "
+        "low-resistance path alongside its normal one, causing more current to flow "
+        "than expected without fully bypassing the component. This can stem from "
+        "insulation breakdown, moisture ingress, or a manufacturing defect. The "
+        "actual value of {actual_value} compared to the nominal {nominal_value} "
+        "({deviation} deviation) is consistent with this partial degradation."
+    ),
+    "wrong_component_type": (
+        "This fault indicates {component_id} does not match its expected component "
+        "type or specification — the simulated electrical behavior is consistent "
+        "with a different type or value than what the circuit design calls for. "
+        "This usually points to an assembly error, such as a component being placed "
+        "in the wrong footprint, or a mislabeled/miss-picked part during construction. "
+        "The nominal value of {nominal_value} does not match the observed behavior "
+        "of {actual_value}."
+    ),
+}
+
+MULTI_FAULT_EXPLANATIONS = {
+    frozenset(["partial_short", "partial_open"]): (
+        "Multiple faults were detected simultaneously in this circuit: {short_component} "
+        "shows signs of a partial short, while {open_component} shows signs of a partial "
+        "open. This combination often arises from a single root cause — such as a power "
+        "surge or thermal event — stressing several components at once, though it can "
+        "also result from two independent failures. Because a short in one branch can "
+        "alter the current distribution seen by other components, {open_component}'s "
+        "deviation should be re-evaluated once {short_component} is repaired, as its "
+        "apparent severity may change."
+    ),
+    frozenset(["partial_short", "wrong_component_type"]): (
+        "Multiple faults were detected simultaneously in this circuit: {short_component} "
+        "shows signs of a partial short, and {wrong_component} appears to be the wrong "
+        "component type or value for this design. These are typically independent "
+        "issues — one electrical degradation, one assembly error — rather than a single "
+        "shared cause. It's recommended to first correct {wrong_component}'s type/value, "
+        "then re-run analysis to confirm whether the short in {short_component} persists "
+        "or was a downstream effect of the incorrect component."
+    ),
+    frozenset(["partial_open", "wrong_component_type"]): (
+        "Multiple faults were detected simultaneously in this circuit: {open_component} "
+        "shows signs of a partial open, and {wrong_component} appears to be the wrong "
+        "component type or value for this design. An incorrect component can alter "
+        "circuit loading in a way that presents as a partial open elsewhere, so it's "
+        "worth correcting {wrong_component} first and re-running the analysis before "
+        "treating {open_component} as a separate physical defect."
+    ),
+    frozenset(["partial_short", "partial_open", "wrong_component_type"]): (
+        "Multiple faults were detected simultaneously across this circuit: {short_component} "
+        "shows signs of a partial short, {open_component} shows signs of a partial open, "
+        "and {wrong_component} appears to be the wrong component type or value. This is "
+        "an unusual combination and suggests either a significant fault event affecting "
+        "several components at once, or that one root-cause fault (most likely the "
+        "incorrect component, {wrong_component}) is distorting the simulated behavior of "
+        "the others. Address {wrong_component} first, then re-run the analysis to confirm "
+        "which of the remaining faults are still present."
+    ),
+}
+
+
+def get_fault_explanation(faults: List['FaultDetail']) -> str:
+    """
+    Generate fault explanation from hardcoded templates (no API calls).
+    
+    Args:
+        faults: List of FaultDetail objects with fault_type, component_id, etc.
+    
+    Returns:
+        Formatted explanation string
+    """
+    if not faults:
+        return "No faults detected."
+    
+    # Extract unique fault types
+    fault_types = list(set(f.fault_type for f in faults))
+    
+    # Single fault type
+    if len(fault_types) == 1:
+        fault = faults[0]  # Use first fault for template
+        template = FAULT_EXPLANATIONS.get(fault.fault_type, "Fault detected: {fault_type}")
+        
+        # Format values
+        actual_val = format_value_with_unit(
+            fault.deviation_metrics.get('actual', 0),
+            _get_unit_from_fault(fault)
+        )
+        nominal_val = format_value_with_unit(
+            fault.deviation_metrics.get('nominal', 0),
+            _get_unit_from_fault(fault)
+        )
+        deviation = f"{fault.deviation_metrics.get('deviation_pct', 0):+.1f}%"
+        
+        return template.format(
+            component_id=fault.component_id,
+            actual_value=actual_val,
+            nominal_value=nominal_val,
+            deviation=deviation,
+            fault_type=fault.fault_type
+        )
+    
+    # Multiple fault types
+    fault_set = frozenset(fault_types)
+    template = MULTI_FAULT_EXPLANATIONS.get(fault_set)
+    
+    if not template:
+        # Fallback for unexpected combinations
+        return f"Multiple faults detected: {', '.join(fault_types)}. Each fault should be addressed individually."
+    
+    # Build component mapping by fault type
+    component_map = {}
+    for fault in faults:
+        if fault.fault_type == "partial_short":
+            component_map["short_component"] = fault.component_id
+        elif fault.fault_type == "partial_open":
+            component_map["open_component"] = fault.component_id
+        elif fault.fault_type == "wrong_component_type":
+            component_map["wrong_component"] = fault.component_id
+    
+    return template.format(**component_map)
+
+
+def _get_unit_from_fault(fault: 'FaultDetail') -> str:
+    """Extract unit from component ID (R=Ω, V=V, I=A)."""
+    comp_id = fault.component_id
+    if comp_id.startswith('R'):
+        return 'Ω'
+    elif comp_id.startswith('V'):
+        return 'V'
+    elif comp_id.startswith('I'):
+        return 'A'
+    elif comp_id.startswith('C'):
+        return 'F'
+    elif comp_id.startswith('L'):
+        return 'H'
+    return ''
+
+
+# ============================================================================
+# Formatting Utilities
+# ============================================================================
+
+def format_scientific(value: float, precision: int = 2) -> str:
+    """
+    Format a number in scientific notation with proper superscripts for PDF.
+    Uses <super> tags for reportlab Paragraph rendering.
+    
+    Examples:
+        100 → "1.00 × 10<super>2</super>"
+        0.005 → "5.00 × 10<super>-3</super>"
+        5000 → "5.00 × 10<super>3</super>"
+    """
+    if value == 0:
+        return "0.00"
+    
+    # Get exponent and mantissa
+    exponent = int(math.floor(math.log10(abs(value))))
+    mantissa = value / (10 ** exponent)
+    
+    # Format mantissa
+    mantissa_str = f"{mantissa:.{precision}f}"
+    
+    # For small exponents, just show the number directly
+    if -2 <= exponent <= 3:
+        if abs(value) >= 1:
+            return f"{value:.{precision}f}"
+        else:
+            return f"{value:.{precision+2}f}".rstrip('0').rstrip('.')
+    
+    # Use reportlab's super tag for superscript
+    return f"{mantissa_str} × 10<super>{exponent}</super>"
+
+
+def format_value_with_unit(value: float, unit: str, precision: int = 2) -> str:
+    """Format a value with its unit in scientific notation."""
+    if value is None:
+        return "N/A"
+    formatted_val = format_scientific(value, precision)
+    return f"{formatted_val} {unit}" if unit else formatted_val
 
 
 # ============================================================================
@@ -436,50 +634,50 @@ class RecommendationEngine:
     RECOMMENDATIONS = {
         "partial_short": {
             "severity": "CRITICAL",
-            "priority": 1,
+            "explanation": (
+                "The simulated resistance for this component is significantly lower "
+                "than its original design value — consistent with a short."
+            ),
             "actions": [
-                "Check for solder bridges or conductive debris between component leads",
-                "Verify resistor value with a multimeter (should match nominal ±5%)",
-                "Inspect PCB traces for unintended connections",
-                "Replace component if damaged or incorrect value installed"
+                "Check this component's value against what you originally set it to.",
+                "If you didn't intend to change it, reset it to the correct value and resimulate.",
+                "If the value is correct, the short may be coming from how this component "
+                "is wired — check for an unintended low-resistance path in the connections.",
             ]
         },
         "partial_open": {
             "severity": "HIGH",
-            "priority": 2,
+            "explanation": (
+                "The simulated resistance for this component is significantly higher "
+                "than its original design value — consistent with an open or near-open path."
+            ),
             "actions": [
-                "Check for cold solder joints or intermittent connections",
-                "Verify all component leads are properly seated and soldered",
-                "Test component continuity with a multimeter",
-                "Check for corroded or oxidized contacts"
+                "Check this component's value against what you originally set it to.",
+                "If you didn't intend to change it, reset it to the correct value and resimulate.",
+                "If wiring looks correct and the value is right, verify the component "
+                "isn't accidentally disconnected — a fully open connection may also be "
+                "flagged separately under Structural Faults.",
             ]
         },
         "wrong_component_type": {
             "severity": "MEDIUM",
-            "priority": 3,
+            "explanation": (
+                "This component's simulated electrical behavior doesn't match what's "
+                "expected for its declared type — as if a different kind of component "
+                "were sitting in this position."
+            ),
             "actions": [
-                "Verify component marking matches schematic specification",
-                "Check if incorrect component value was installed",
-                "Review circuit behavior against expected response",
-                "Consult circuit schematic for correct component type"
-            ]
-        },
-        "value_drift": {
-            "severity": "LOW",
-            "priority": 4,
-            "actions": [
-                "Component may be within tolerance but outside ideal range",
-                "Consider replacing with tighter tolerance component if precision is critical",
-                "Monitor component over time for further drift",
-                "Verify environmental conditions (temperature, humidity) are within spec"
+                "Confirm the component type (resistor, capacitor, etc.) matches your design.",
+                "Check the component's value is reasonable for its type.",
+                "Replace the component if it was swapped by mistake, then resimulate.",
             ]
         },
         "Normal": {
             "severity": "INFO",
-            "priority": 99,
+            "explanation": "No fault patterns were detected in this circuit.",
             "actions": [
-                "Circuit is operating within normal parameters",
-                "No action required"
+                "No action needed.",
+                "Review node voltages and branch currents directly if you want more detail.",
             ]
         }
     }
@@ -493,7 +691,7 @@ class RecommendationEngine:
             fault_type=fault_type,
             severity=severity,
             actions=template["actions"],
-            priority=template["priority"]
+            priority=0  # No longer used
         )
 
 
@@ -559,7 +757,7 @@ class FaultReportGenerator:
         
         # Generate recommendations
         recommendations = self._generate_recommendations(detected_faults)
-        recommendations.sort(key=lambda r: r.priority)
+        # No sorting needed - display in order detected
         
         # Build final report
         end_time = datetime.now()
@@ -700,14 +898,13 @@ class FaultReportGenerator:
         """Convert report to dictionary for JSON serialization."""
         return asdict(report)
     
-    def add_rag_explanations(self, report: FaultReport, rag_function) -> FaultReport:
-        """Add RAG-generated explanations to fault details."""
-        for fault in report.detected_faults:
-            try:
-                explanation = rag_function(fault.fault_type, fault.component_id)
+    def add_rag_explanations(self, report: FaultReport) -> FaultReport:
+        """Add explanations to fault details (using hardcoded templates, not RAG/API)."""
+        if report.detected_faults:
+            explanation = get_fault_explanation(report.detected_faults)
+            # Add same explanation to all faults (or first fault for single-fault case)
+            for fault in report.detected_faults:
                 fault.explanation = explanation
-            except Exception as e:
-                fault.explanation = f"Explanation unavailable: {e}"
         
         return report
 
@@ -722,7 +919,7 @@ def generate_fault_report(circuit_id: str,
                          simulation_result: Dict,
                          ml_predictions: Dict,
                          nominal_values: Optional[Dict[str, float]] = None,
-                         add_rag_explanations: bool = False) -> FaultReport:
+                         add_explanations: bool = True) -> FaultReport:
     """
     Convenience function to generate a fault report.
     
@@ -733,7 +930,7 @@ def generate_fault_report(circuit_id: str,
         simulation_result: Dictionary with 'voltages' and 'currents' from ngspice
         ml_predictions: ML fault predictions from FaultAnalyzer
         nominal_values: Expected nominal component values
-        add_rag_explanations: Whether to add RAG explanations (requires rag module)
+        add_explanations: Whether to add hardcoded fault explanations (default True)
     
     Returns:
         FaultReport dataclass instance
@@ -743,12 +940,8 @@ def generate_fault_report(circuit_id: str,
         circuit_data, netlist, simulation_result, ml_predictions, nominal_values
     )
     
-    if add_rag_explanations:
-        try:
-            from rag import explain_fault
-            report = generator.add_rag_explanations(report, explain_fault)
-        except ImportError:
-            pass
+    if add_explanations:
+        report = generator.add_rag_explanations(report)
     
     return report
 
@@ -822,13 +1015,14 @@ class PDFReportGenerator:
             fontName='Courier'
         ))
     
-    def generate_pdf(self, report: FaultReport, output_path: str):
+    def generate_pdf(self, report: FaultReport, output_path: str, circuit_image_base64: str = None):
         """
         Generate PDF report from FaultReport.
         
         Args:
             report: FaultReport instance
             output_path: Path to save PDF file
+            circuit_image_base64: Optional base64 encoded circuit diagram image
         """
         doc = SimpleDocTemplate(
             output_path,
@@ -843,28 +1037,33 @@ class PDFReportGenerator:
         
         # Build report sections
         story.extend(self._build_header(report))
-        story.append(Spacer(1, 0.3 * inch))
+        story.append(Spacer(1, 0.15 * inch))
         
         story.extend(self._build_overview(report))
-        story.append(Spacer(1, 0.2 * inch))
+        story.append(Spacer(1, 0.1 * inch))
+        
+        # Add circuit diagram if provided
+        if circuit_image_base64:
+            story.extend(self._build_circuit_diagram(circuit_image_base64))
+            story.append(Spacer(1, 0.1 * inch))
         
         story.extend(self._build_component_snapshot(report))
-        story.append(Spacer(1, 0.2 * inch))
+        story.append(Spacer(1, 0.1 * inch))
         
         story.extend(self._build_simulation_summary(report))
-        story.append(Spacer(1, 0.2 * inch))
+        story.append(Spacer(1, 0.1 * inch))
         
         if report.symbolic_analysis and not report.symbolic_analysis.error:
             story.extend(self._build_symbolic_analysis(report))
-            story.append(Spacer(1, 0.2 * inch))
+            story.append(Spacer(1, 0.1 * inch))
         
         story.extend(self._build_fault_analysis(report))
-        story.append(Spacer(1, 0.2 * inch))
+        story.append(Spacer(1, 0.1 * inch))
         
         story.extend(self._build_recommendations(report))
+        story.append(Spacer(1, 0.15 * inch))
         
-        # Appendix on new page
-        story.append(PageBreak())
+        # Appendix (no page break, just more space)
         story.extend(self._build_appendix(report))
         
         # Build PDF
@@ -876,13 +1075,13 @@ class PDFReportGenerator:
         
         # Title
         elements.append(Paragraph("CIRCUIT FAULT ANALYSIS REPORT", self.styles['ReportTitle']))
-        elements.append(Spacer(1, 0.2 * inch))
+        elements.append(Spacer(1, 0.1 * inch))
         
         # Status indicator
         status_color = colors.green if report.overall_status == "Healthy" else colors.red
         status_text = f'<font color="{status_color.hexval()}"><b>STATUS: {report.overall_status.upper()}</b></font>'
         elements.append(Paragraph(status_text, self.styles['ReportBody']))
-        elements.append(Spacer(1, 0.1 * inch))
+        elements.append(Spacer(1, 0.08 * inch))
         
         # Metadata table
         meta_data = [
@@ -892,15 +1091,19 @@ class PDFReportGenerator:
             ['Generation Time:', f'{report.generation_time_ms:.2f} ms' if report.generation_time_ms else 'N/A']
         ]
         
-        meta_table = Table(meta_data, colWidths=[2*inch, 4*inch])
+        meta_table = Table(meta_data, colWidths=[2.5*inch, 3.5*inch])
         meta_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
             ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
             ('FONTSIZE', (0, 0), (-1, -1), 10),
             ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2c3e50')),
-            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),   # Labels left-aligned
+            ('ALIGN', (1, 0), (1, -1), 'LEFT'),   # Values left-aligned
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
         ]))
         elements.append(meta_table)
         
@@ -925,39 +1128,84 @@ class PDFReportGenerator:
         
         return elements
     
+    def _build_circuit_diagram(self, circuit_image_base64: str) -> List:
+        """Build circuit diagram section from base64 image."""
+        elements = []
+        elements.append(Paragraph("2. CIRCUIT DIAGRAM", self.styles['SectionHeader']))
+        
+        try:
+            # Decode base64 image (remove data:image/png;base64, prefix if present)
+            if ',' in circuit_image_base64:
+                image_data = base64.b64decode(circuit_image_base64.split(',')[1])
+            else:
+                image_data = base64.b64decode(circuit_image_base64)
+            
+            # Create image buffer
+            image_buffer = io.BytesIO(image_data)
+            
+            # Add image to PDF (fit to page width with aspect ratio)
+            img = Image(image_buffer, width=6.5*inch, height=4*inch)
+            elements.append(img)
+            
+        except Exception as e:
+            elements.append(Paragraph(
+                f"<i>Circuit diagram could not be embedded: {str(e)}</i>",
+                self.styles['ReportBody']
+            ))
+        
+        return elements
+    
     def _build_component_snapshot(self, report: FaultReport) -> List:
         """Build component snapshot table."""
         elements = []
-        elements.append(Paragraph("2. COMPONENT SNAPSHOT", self.styles['SectionHeader']))
+        elements.append(Paragraph("3. COMPONENT SNAPSHOT", self.styles['SectionHeader']))
         
         # Build table data
         table_data = [['ID', 'Type', 'Nominal', 'Actual', 'Deviation', 'Nodes']]
         
         for comp in report.components:
-            nominal_str = f"{comp.nominal_value:.2e} {comp.unit}" if comp.nominal_value else "N/A"
-            actual_str = f"{comp.actual_value:.2e} {comp.unit}" if comp.actual_value else "N/A"
-            deviation_str = f"{comp.deviation_pct:+.1f}%" if comp.deviation_pct else "-"
-            nodes_str = " - ".join(comp.nodes)
+            nominal_str = format_value_with_unit(comp.nominal_value, comp.unit) if comp.nominal_value else "N/A"
+            actual_str = format_value_with_unit(comp.actual_value, comp.unit) if comp.actual_value else "N/A"
+            deviation_str = f"{comp.deviation_pct:+.1f}%" if comp.deviation_pct else "—"
+            nodes_str = " ↔ ".join(comp.nodes)
             
             table_data.append([
                 comp.id,
-                comp.type,
-                nominal_str,
-                actual_str,
+                comp.type.replace('_', ' ').title(),
+                Paragraph(nominal_str, self.styles['ReportBody']),
+                Paragraph(actual_str, self.styles['ReportBody']),
                 deviation_str,
                 nodes_str
             ])
         
-        comp_table = Table(table_data, colWidths=[0.8*inch, 1*inch, 1.2*inch, 1.2*inch, 0.9*inch, 1.4*inch])
+        comp_table = Table(table_data, colWidths=[0.8*inch, 1*inch, 1.3*inch, 1.3*inch, 0.9*inch, 1.2*inch])
         comp_table.setStyle(TableStyle([
+            # Header row
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498db')),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#ecf0f1')])
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+            
+            # Data rows
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # ID column centered
+            ('ALIGN', (1, 1), (1, -1), 'LEFT'),     # Type column left
+            ('ALIGN', (2, 1), (4, -1), 'CENTER'),   # Numeric columns centered
+            ('ALIGN', (5, 1), (5, -1), 'CENTER'),   # Nodes column centered
+            ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+            
+            # Padding and spacing
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            
+            # Grid and background
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')])
         ]))
         elements.append(comp_table)
         
@@ -966,29 +1214,37 @@ class PDFReportGenerator:
     def _build_simulation_summary(self, report: FaultReport) -> List:
         """Build simulation summary section."""
         elements = []
-        elements.append(Paragraph("3. SIMULATION RESULTS", self.styles['SectionHeader']))
+        elements.append(Paragraph("4. SIMULATION RESULTS", self.styles['SectionHeader']))
         
         # Node voltages
-        elements.append(Paragraph("3.1 Node Voltages", self.styles['SubsectionHeader']))
+        elements.append(Paragraph("4.1 Node Voltages", self.styles['SubsectionHeader']))
         
-        voltage_data = [['Node', 'Voltage (V)']]
+        voltage_data = [['Node', 'Voltage']]
         for node, voltage in sorted(report.node_voltages.items()):
-            voltage_data.append([node, f"{voltage:.6f}"])
+            formatted_value = format_value_with_unit(voltage, 'V', precision=3)
+            voltage_data.append([
+                node,
+                Paragraph(formatted_value, self.styles['ReportBody'])
+            ])
         
-        voltage_table = Table(voltage_data, colWidths=[2*inch, 2*inch])
-        voltage_table.setStyle(self._get_table_style())
+        voltage_table = Table(voltage_data, colWidths=[2*inch, 2.5*inch])
+        voltage_table.setStyle(self._get_professional_table_style())
         elements.append(voltage_table)
-        elements.append(Spacer(1, 0.15 * inch))
+        elements.append(Spacer(1, 0.1 * inch))
         
         # Branch currents
-        elements.append(Paragraph("3.2 Branch Currents", self.styles['SubsectionHeader']))
+        elements.append(Paragraph("4.2 Branch Currents", self.styles['SubsectionHeader']))
         
-        current_data = [['Component', 'Current (A)']]
+        current_data = [['Component', 'Current']]
         for comp_id, current in sorted(report.branch_currents.items()):
-            current_data.append([comp_id, f"{current:.6e}"])
+            formatted_value = format_value_with_unit(current, 'A', precision=3)
+            current_data.append([
+                comp_id,
+                Paragraph(formatted_value, self.styles['ReportBody'])
+            ])
         
-        current_table = Table(current_data, colWidths=[2*inch, 2*inch])
-        current_table.setStyle(self._get_table_style())
+        current_table = Table(current_data, colWidths=[2*inch, 2.5*inch])
+        current_table.setStyle(self._get_professional_table_style())
         elements.append(current_table)
         
         return elements
@@ -998,10 +1254,10 @@ class PDFReportGenerator:
         elements = []
         sym = report.symbolic_analysis
         
-        elements.append(Paragraph("4. SYMBOLIC CIRCUIT ANALYSIS", self.styles['SectionHeader']))
+        elements.append(Paragraph("5. SYMBOLIC CIRCUIT ANALYSIS", self.styles['SectionHeader']))
         
         # KCL Equations
-        elements.append(Paragraph("4.1 Kirchhoff's Current Law (KCL) Equations", self.styles['SubsectionHeader']))
+        elements.append(Paragraph("5.1 Kirchhoff's Current Law (KCL) Equations", self.styles['SubsectionHeader']))
         
         if sym.kcl_equations:
             for kcl in sym.kcl_equations:
@@ -1013,7 +1269,7 @@ class PDFReportGenerator:
         elements.append(Spacer(1, 0.1 * inch))
         
         # Solved voltages
-        elements.append(Paragraph("4.2 Symbolic Solution", self.styles['SubsectionHeader']))
+        elements.append(Paragraph("5.2 Symbolic Solution", self.styles['SubsectionHeader']))
         
         if sym.solved_voltages:
             voltage_text = "Node voltages (symbolic):<br/>"
@@ -1024,7 +1280,7 @@ class PDFReportGenerator:
         elements.append(Spacer(1, 0.1 * inch))
         
         # Cross-check
-        elements.append(Paragraph("4.3 Verification", self.styles['SubsectionHeader']))
+        elements.append(Paragraph("5.3 Verification", self.styles['SubsectionHeader']))
         
         status_text = f"<b>Cross-check status:</b> {sym.cross_check_status}"
         if sym.cross_check_status == "PASS":
@@ -1043,7 +1299,7 @@ class PDFReportGenerator:
     def _build_fault_analysis(self, report: FaultReport) -> List:
         """Build fault analysis section."""
         elements = []
-        elements.append(Paragraph("5. FAULT ANALYSIS", self.styles['SectionHeader']))
+        elements.append(Paragraph("6. FAULT ANALYSIS", self.styles['SectionHeader']))
         
         if not report.detected_faults:
             elements.append(Paragraph(
@@ -1057,52 +1313,64 @@ class PDFReportGenerator:
         sorted_faults = sorted(report.detected_faults, key=lambda f: severity_order.get(f.severity, 99))
         
         for idx, fault in enumerate(sorted_faults, 1):
-            elements.append(Paragraph(f"5.{idx} Fault in {fault.component_id}", self.styles['SubsectionHeader']))
+            elements.append(Paragraph(f"6.{idx} Fault in {fault.component_id}", self.styles['SubsectionHeader']))
+            
+            # Get unit for this component
+            unit = self._get_unit_for_component(fault.component_id, report)
             
             # Fault details table
             fault_data = [
-                ['Fault Type:', fault.fault_type],
+                ['Fault Type:', fault.fault_type.replace('_', ' ').title()],
                 ['Severity:', fault.severity],
                 ['Confidence:', f"{fault.confidence * 100:.1f}%"],
                 ['Deviation:', f"{fault.deviation_metrics.get('deviation_pct', 0):+.1f}%"],
-                ['Nominal Value:', f"{fault.deviation_metrics.get('nominal', 0):.2e}"],
-                ['Actual Value:', f"{fault.deviation_metrics.get('actual', 0):.2e}"]
+                ['Nominal Value:', Paragraph(format_value_with_unit(
+                    fault.deviation_metrics.get('nominal', 0), unit
+                ), self.styles['ReportBody'])],
+                ['Actual Value:', Paragraph(format_value_with_unit(
+                    fault.deviation_metrics.get('actual', 0), unit
+                ), self.styles['ReportBody'])]
             ]
             
             fault_table = Table(fault_data, colWidths=[1.5*inch, 4*inch])
             fault_table.setStyle(TableStyle([
                 ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
                 ('FONTSIZE', (0, 0), (-1, -1), 9),
                 ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
                 ('ALIGN', (1, 0), (1, -1), 'LEFT'),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
             ]))
             elements.append(fault_table)
             
             # Explanation if available
             if fault.explanation:
-                elements.append(Spacer(1, 0.1 * inch))
+                elements.append(Spacer(1, 0.06 * inch))
                 elements.append(Paragraph("<b>Explanation:</b>", self.styles['ReportBody']))
                 elements.append(Paragraph(fault.explanation, self.styles['ReportBody']))
             
-            elements.append(Spacer(1, 0.15 * inch))
+            elements.append(Spacer(1, 0.1 * inch))
         
         return elements
     
     def _build_recommendations(self, report: FaultReport) -> List:
         """Build recommendations section."""
         elements = []
-        elements.append(Paragraph("6. RECOMMENDATIONS", self.styles['SectionHeader']))
+        elements.append(Paragraph("7. RECOMMENDATIONS", self.styles['SectionHeader']))
         
         for idx, rec in enumerate(report.recommendations, 1):
             severity_color = self._get_severity_color(rec.severity)
-            header_text = f'<font color="{severity_color.hexval()}"><b>{idx}. {rec.fault_type}</b></font> (Priority: {rec.priority})'
+            header_text = f'<font color="{severity_color.hexval()}"><b>{idx}. {rec.fault_type.replace("_", " ").title()}</b></font>'
             elements.append(Paragraph(header_text, self.styles['SubsectionHeader']))
             
             for action in rec.actions:
                 elements.append(Paragraph(f"• {action}", self.styles['ReportBody']))
             
-            elements.append(Spacer(1, 0.1 * inch))
+            elements.append(Spacer(1, 0.08 * inch))
         
         return elements
     
@@ -1118,7 +1386,7 @@ class PDFReportGenerator:
         for line in netlist_lines:
             elements.append(Preformatted(line, self.styles['CodeBlock']))
         
-        elements.append(Spacer(1, 0.2 * inch))
+        elements.append(Spacer(1, 0.15 * inch))
         
         # ML Predictions
         elements.append(Paragraph("B. ML Model Output", self.styles['SubsectionHeader']))
@@ -1135,17 +1403,44 @@ class PDFReportGenerator:
         return elements
     
     def _get_table_style(self):
-        """Get common table style."""
+        """Get common table style (deprecated - use _get_professional_table_style)."""
+        return self._get_professional_table_style()
+    
+    def _get_professional_table_style(self):
+        """Get professional table style with proper spacing and alignment."""
         return TableStyle([
+            # Header row
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498db')),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#ecf0f1')])
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+            
+            # Data rows
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # First column centered
+            ('ALIGN', (1, 1), (-1, -1), 'CENTER'), # Other columns centered
+            ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+            
+            # Padding
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            
+            # Grid and alternating rows
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')])
         ])
+    
+    def _get_unit_for_component(self, component_id: str, report: FaultReport) -> str:
+        """Get the unit for a component based on its ID."""
+        for comp in report.components:
+            if comp.id == component_id:
+                return comp.unit
+        return ""
     
     def _get_severity_color(self, severity: str):
         """Get color for severity level."""
@@ -1159,14 +1454,15 @@ class PDFReportGenerator:
         return colors_map.get(severity, colors.black)
 
 
-def save_report_as_pdf(report: FaultReport, output_path: str):
+def save_report_as_pdf(report: FaultReport, output_path: str, circuit_image_base64: str = None):
     """
     Save fault report as human-readable PDF.
     
     Args:
         report: FaultReport instance
         output_path: Path to save PDF file (e.g., "report.pdf")
+        circuit_image_base64: Optional base64 encoded circuit diagram image
     """
     pdf_gen = PDFReportGenerator()
-    pdf_gen.generate_pdf(report, output_path)
+    pdf_gen.generate_pdf(report, output_path, circuit_image_base64=circuit_image_base64)
     print(f"PDF report saved to: {output_path}")
