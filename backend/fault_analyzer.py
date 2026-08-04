@@ -47,13 +47,26 @@ def _extract_features(
     currs    = list(branch_currents.values())
     curr_abs = np.abs(currs)
 
-    n_passive = sum(
-        1 for name in component_values
-        if not (name.upper().startswith("V") or name.upper().startswith("I"))
-    )
-    
+    PASSIVE_TYPES = {"resistor", "capacitor", "inductor"}
+    if circuit_data:
+        n_passive = sum(
+            1 for c in circuit_data.get("components", [])
+            if c.get("type") in PASSIVE_TYPES
+        )
+    else:
+        n_passive = sum(
+            1 for name in component_values
+            if not (name.upper().startswith("V") or name.upper().startswith("I"))
+        )
+
+    # design_values = the original intended component values (set at drop time in
+    # the frontend and sent in every /api/simulate payload).
+    # Always prefer these over topology matching — they are circuit-specific and
+    # exact.  Only fall back to topology_matcher when design_values are absent
+    # (e.g. old payloads from external callers).
+    print(f"DEBUG design_values received: {design_values}")
     if design_values:
-        nominal = design_values
+        nominal = {k: v for k, v in design_values.items() if v and v != 0}
     else:
         nominal, _ = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
 
@@ -113,7 +126,7 @@ def _compute_drift_warnings(
     # Use design_values if provided (circuit-specific nominals), otherwise
     # fall back to topology matching with global nominal_lookup
     if design_values:
-        nominal = design_values
+        nominal = {k: v for k, v in design_values.items() if v and v != 0}
     else:
         nominal, _ = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
     if not nominal:

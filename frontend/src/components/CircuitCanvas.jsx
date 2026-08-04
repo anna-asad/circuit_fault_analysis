@@ -766,6 +766,8 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
           data: {
             ...n.data,
             value: nextValue,
+            // Lock nominalValue on first save only — never overwrite after that.
+            nominalValue: n.data.nominalValue !== undefined ? n.data.nominalValue : nextValue,
             isEditing: false,
             valueDraft: undefined,
             valueError: null,
@@ -1100,7 +1102,8 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
           componentType: type,
           componentId: componentId,  // Store for circuit conversion
           value,
-          nominalValue: value,  // ← NEW: Store original/nominal value for ML fault detection
+          // nominalValue is NOT set here — it is locked in on the first
+          // time the user saves a value via handleSaveDraft.
           state: type === 'switch' ? 'open' : undefined,  // Initial switch state
           rotation: 0,
           onEditValue:   handleEditValue,
