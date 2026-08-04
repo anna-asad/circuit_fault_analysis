@@ -83,6 +83,59 @@ function ResultsPage({ results, onBack, circuit }) {
   const [cardsOpen, setCardsOpen] = useState(true);
   const [faultsOpen, setFaultsOpen] = useState(true);
   const [mlOpen, setMlOpen] = useState(true);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+
+  const handleGeneratePDF = async () => {
+    if (!results || !circuit) return;
+    
+    setIsGeneratingPDF(true);
+    
+    try {
+      // Use the circuit converter to get the proper backend format
+      const { convertCircuitToBackendFormat } = await import('../utils/circuitConverter.js');
+      
+      const backendCircuit = convertCircuitToBackendFormat(
+        circuit.nodes || [],
+        circuit.edges || []
+      );
+      
+      // Add circuit_id for tracking
+      backendCircuit.circuit_id = `circuit_${Date.now()}`;
+      
+      console.log('Sending PDF report request:', backendCircuit);
+      
+      const response = await fetch('http://localhost:8000/api/generate-report-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(backendCircuit)
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error('Server error:', errorText);
+        throw new Error('PDF generation failed: ' + errorText);
+      }
+      
+      // Download the PDF
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `circuit_fault_report_${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      console.log('PDF report downloaded successfully');
+      
+    } catch (error) {
+      console.error('PDF generation failed:', error);
+      alert('Failed to generate PDF report: ' + error.message);
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
 
   if (!results) {
     return (
@@ -218,11 +271,26 @@ const bulbStateMap = new Map(
           <span className="results-page-title-icon">⚡</span>
           <h2>Simulation Results</h2>
         </div>
-        {onBack && (
-          <button type="button" className="results-page-back" onClick={onBack}>
-            ← Back to editor
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <button 
+            type="button" 
+            className="generate-report-btn" 
+            onClick={handleGeneratePDF}
+            disabled={isGeneratingPDF}
+            title="Download comprehensive fault analysis report as PDF"
+          >
+            {isGeneratingPDF ? (
+              <>📄 Generating Report...</>
+            ) : (
+              <>📄 Generate Report</>
+            )}
           </button>
-        )}
+          {onBack && (
+            <button type="button" className="results-page-back" onClick={onBack}>
+              ← Back to editor
+            </button>
+          )}
+        </div>
       </header>
 
       <main className="results-page-body">

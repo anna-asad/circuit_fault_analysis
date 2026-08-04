@@ -185,8 +185,43 @@ function FaultsSection({ structural_faults }) {
 }
 
 // ── ResultsPanel ──────────────────────────────────────────────────────────────
-function ResultsPanel({ results }) {
+function ResultsPanel({ results, circuitData }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  // Handle PDF report download
+  const handleDownloadPDF = async () => {
+    if (!circuitData || downloading) return;
+    
+    setDownloading(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/generate-report-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(circuitData),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to generate PDF: ${response.statusText}`);
+      }
+      
+      // Download the PDF
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `circuit_fault_report_${new Date().toISOString().slice(0,10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      alert('Failed to generate PDF report. Please try again.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   // ── No results yet ──────────────────────────────────────────────────────
   if (!results) {
@@ -254,7 +289,19 @@ function ResultsPanel({ results }) {
   if (isAllClear) {
     return (
       <aside className="results-panel">
-        <h3>Simulation Results</h3>
+        <div className="results-header">
+          <h3>Simulation Results</h3>
+          {circuitData && (
+            <button
+              className="download-pdf-btn"
+              onClick={handleDownloadPDF}
+              disabled={downloading}
+              title="Download detailed PDF report"
+            >
+              {downloading ? '⏳' : '📄'} {downloading ? 'Generating...' : 'PDF Report'}
+            </button>
+          )}
+        </div>
         <div className="results-content">
           <div className="all-clear-banner">
             <span className="all-clear-icon">✓</span>
@@ -292,7 +339,19 @@ function ResultsPanel({ results }) {
   // ── Expanded view (faults present or ML non-normal) ─────────────────────
   return (
     <aside className="results-panel">
-      <h3>Simulation Results</h3>
+      <div className="results-header">
+        <h3>Simulation Results</h3>
+        {circuitData && (
+          <button
+            className="download-pdf-btn"
+            onClick={handleDownloadPDF}
+            disabled={downloading}
+            title="Download detailed PDF report"
+          >
+            {downloading ? '⏳' : '📄'} {downloading ? 'Generating...' : 'PDF Report'}
+          </button>
+        )}
+      </div>
       <div className="results-content">
         <CardsSection
           components={components}
