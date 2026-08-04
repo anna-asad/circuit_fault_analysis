@@ -1,6 +1,7 @@
 """FastAPI Backend for Circuit Fault Detector"""
 
 import logging
+from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
@@ -13,6 +14,10 @@ from simulation_runner import SimulationRunner
 from structural_faults import detect_structural_faults
 from fault_analyzer import FaultAnalyzer
 from rag import explain_fault
+from report_generator import generate_fault_report, FaultReport, save_report_as_pdf
+from fastapi.responses import FileResponse
+import tempfile
+import os
 
 log = logging.getLogger(__name__)
 
@@ -486,6 +491,175 @@ async def explain_fault_endpoint(req: ExplainRequest):
         explanation = explain_fault(req.fault_type, req.component)
         return {"explanation": explanation}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/generate-report")
+async def generate_report_endpoint(circuit: CircuitModel):
+    """
+    Generate comprehensive fault analysis report with symbolic circuit analysis.
+    
+    Returns a structured report including:
+    - Circuit metadata and topology
+    - Symbolic nodal analysis (KCL equations, symbolic solving)
+    - Per-component fault breakdown
+    - RAG-based explanations
+    - Severity rankings and recommendations
+    """
+    try:
+        circuit_dict = circuit.model_dump()
+        
+        # Ensure all component values are not None
+        for comp in circuit_dict.get("components", []):
+            if comp.get("value") is None:
+                comp["value"] = 0
+        
+        # Validate circuit
+        validator = CircuitValidator()
+        is_valid, errors, warnings = validator.validate(circuit_dict)
+        
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Circuit validation failed: {'; '.join(errors)}"
+            )
+        
+        # Generate netlist
+        netlist = generate_netlist(circuit_dict)
+        
+        # Run simulation
+        runner = SimulationRunner()
+        sim_result = runner.run_simulation(netlist, circuit_data=circuit_dict)
+        
+        if not sim_result["success"]:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Simulation failed: {sim_result['error']}"
+            )
+        
+        # Run ML analysis
+        analyzer = get_fault_analyzer()
+        ml_predictions = analyzer.analyze(
+            circuit_data=circuit_dict,
+            node_voltages=sim_result.get("voltages", {}),
+            branch_currents=sim_result.get("currents", {}),
+            design_values=circuit_dict.get("design_values"),
+        )
+        
+        # Generate comprehensive report
+        circuit_id = circuit_dict.get("circuit_id", "unnamed_circuit")
+        report = generate_fault_report(
+            circuit_id=circuit_id,
+            circuit_data=circuit_dict,
+            netlist=netlist,
+            simulation_result=sim_result,
+            ml_predictions=ml_predictions,
+            nominal_values=circuit_dict.get("design_values"),
+            add_rag_explanations=True
+        )
+        
+        # Convert to dict for JSON response
+        from dataclasses import asdict
+        report_dict = asdict(report)
+        
+        return {
+            "success": True,
+            "report": report_dict
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/generate-report-pdf")
+async def generate_report_pdf_endpoint(circuit: CircuitModel):
+    """
+    Generate comprehensive fault analysis report as a PDF file.
+    
+    Returns a human-readable PDF document with:
+    - Executive summary with circuit status
+    - Component snapshot table
+    - Simulation results (voltages and currents)
+    - Symbolic circuit analysis (KCL equations)
+    - Detailed fault analysis with explanations
+    - Actionable recommendations
+    - Appendix with SPICE netlist and ML predictions
+    """
+    try:
+        circuit_dict = circuit.model_dump()
+        
+        # Ensure all component values are not None
+        for comp in circuit_dict.get("components", []):
+            if comp.get("value") is None:
+                comp["value"] = 0
+        
+        # Validate circuit
+        validator = CircuitValidator()
+        is_valid, errors, warnings = validator.validate(circuit_dict)
+        
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Circuit validation failed: {'; '.join(errors)}"
+            )
+        
+        # Generate netlist
+        netlist = generate_netlist(circuit_dict)
+        
+        # Run simulation
+        runner = SimulationRunner()
+        sim_result = runner.run_simulation(netlist, circuit_data=circuit_dict)
+        
+        if not sim_result["success"]:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Simulation failed: {sim_result['error']}"
+            )
+        
+        # Run ML analysis
+        analyzer = get_fault_analyzer()
+        ml_predictions = analyzer.analyze(
+            circuit_data=circuit_dict,
+            node_voltages=sim_result.get("voltages", {}),
+            branch_currents=sim_result.get("currents", {}),
+            design_values=circuit_dict.get("design_values"),
+        )
+        
+        # Generate comprehensive report
+        circuit_id = circuit_dict.get("circuit_id", f"circuit_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+        report = generate_fault_report(
+            circuit_id=circuit_id,
+            circuit_data=circuit_dict,
+            netlist=netlist,
+            simulation_result=sim_result,
+            ml_predictions=ml_predictions,
+            nominal_values=circuit_dict.get("design_values"),
+            add_rag_explanations=True
+        )
+        
+        # Generate PDF in temporary file
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf", mode='wb')
+        temp_file.close()
+        
+        save_report_as_pdf(report, temp_file.name)
+        
+        # Return PDF file
+        return FileResponse(
+            path=temp_file.name,
+            media_type="application/pdf",
+            filename=f"{circuit_id}_fault_report.pdf",
+            background=None  # Cleanup will happen after response is sent
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

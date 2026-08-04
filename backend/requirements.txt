@@ -18,3 +18,9 @@ httpx>=0.25.0
 
 # Python CORS
 python-multipart>=0.0.6
+
+# Symbolic Math
+sympy>=1.12
+
+# PDF Generation
+reportlab>=4.0.0
