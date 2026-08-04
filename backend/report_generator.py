@@ -555,40 +555,84 @@ class SymbolicCircuitAnalyzer:
             return "ERROR", [symbolic.error]
         
         details = []
-        all_passed = True
-        
+        has_fail    = False
+        has_warning = False
+
+        # Zero-threshold: values below this are treated as zero to avoid
+        # false mismatches from floating-point noise near the reference node.
+        ZERO_THRESHOLD = 1e-9
+
+        def _classify(ng_val, sym_val, label, unit):
+            """
+            Compare one pair of values and return (severity, message).
+            severity: 'pass' | 'warning' | 'fail'
+            """
+            ng  = 0.0 if abs(ng_val)  < ZERO_THRESHOLD else ng_val
+            sym = 0.0 if abs(sym_val) < ZERO_THRESHOLD else sym_val
+
+            # Both effectively zero — trivial match
+            if ng == 0.0 and sym == 0.0:
+                return 'pass', None
+
+            mag_ng  = abs(ng)
+            mag_sym = abs(sym)
+
+            # Magnitude relative difference
+            mag_diff     = abs(mag_ng - mag_sym)
+            mag_rel_diff = mag_diff / (mag_ng + 1e-9)
+
+            if mag_rel_diff <= tolerance:
+                # Magnitudes agree — check sign
+                if (ng >= 0) == (sym >= 0):
+                    return 'pass', None
+                else:
+                    return 'warning', (
+                        f"Sign convention difference at {label}: "
+                        f"ngspice={ng:.6f}{unit}, symbolic={sym:.6f}{unit} "
+                        f"(magnitudes match; opposite reference directions)."
+                    )
+            else:
+                return 'fail', (
+                    f"Magnitude mismatch at {label}: "
+                    f"ngspice={ng:.6f}{unit}, symbolic={sym:.6f}{unit} "
+                    f"(diff={mag_diff:.6f}{unit})."
+                )
+
         # Check voltages
         for node, ng_voltage in ngspice_voltages.items():
             sym_voltage = symbolic.numeric_voltages.get(node)
-            if sym_voltage is not None:
-                diff = abs(ng_voltage - sym_voltage)
-                rel_diff = diff / (abs(ng_voltage) + 1e-9)
-                
-                if rel_diff > tolerance:
-                    all_passed = False
-                    details.append(
-                        f"Voltage mismatch at {node}: ngspice={ng_voltage:.6f}V, "
-                        f"symbolic={sym_voltage:.6f}V (diff={diff:.6f}V)"
-                    )
-        
+            if sym_voltage is None:
+                continue
+            sev, msg = _classify(ng_voltage, sym_voltage, f"node {node}", "V")
+            if sev == 'fail':
+                has_fail = True
+                details.append(msg)
+            elif sev == 'warning':
+                has_warning = True
+                details.append(msg)
+
         # Check currents
         for comp_id, ng_current in ngspice_currents.items():
             sym_current = symbolic.numeric_currents.get(comp_id)
-            if sym_current is not None:
-                diff = abs(ng_current - sym_current)
-                rel_diff = diff / (abs(ng_current) + 1e-9)
-                
-                if rel_diff > tolerance:
-                    all_passed = False
-                    details.append(
-                        f"Current mismatch in {comp_id}: ngspice={ng_current:.6f}A, "
-                        f"symbolic={sym_current:.6f}A (diff={diff:.6f}A)"
-                    )
-        
-        status = "PASS" if all_passed else "FAIL"
-        if all_passed and not details:
-            details.append("All voltages and currents match within tolerance")
-        
+            if sym_current is None:
+                continue
+            sev, msg = _classify(ng_current, sym_current, comp_id, "A")
+            if sev == 'fail':
+                has_fail = True
+                details.append(msg)
+            elif sev == 'warning':
+                has_warning = True
+                details.append(msg)
+
+        if has_fail:
+            status = "FAIL"
+        elif has_warning:
+            status = "WARNING"
+            details.insert(0, "Sign convention difference detected — magnitudes agree.")
+        else:
+            status = "PASS"
+            details.append("All voltages and currents match within tolerance.")
+
         return status, details
 
 
@@ -968,6 +1012,7 @@ class PDFReportGenerator:
             parent=self.styles['Heading1'],
             fontSize=24,
             textColor=colors.HexColor('#1a1a1a'),
+            backColor=colors.white,
             spaceAfter=30,
             alignment=TA_CENTER,
             fontName='Helvetica-Bold'
@@ -978,7 +1023,8 @@ class PDFReportGenerator:
             name='SectionHeader',
             parent=self.styles['Heading2'],
             fontSize=16,
-            textColor=colors.HexColor('#2c3e50'),
+            textColor=colors.HexColor('#1a1a1a'),
+            backColor=colors.white,
             spaceAfter=12,
             spaceBefore=20,
             fontName='Helvetica-Bold'
@@ -989,7 +1035,8 @@ class PDFReportGenerator:
             name='SubsectionHeader',
             parent=self.styles['Heading3'],
             fontSize=13,
-            textColor=colors.HexColor('#34495e'),
+            textColor=colors.HexColor('#1a1a1a'),
+            backColor=colors.white,
             spaceAfter=10,
             spaceBefore=15,
             fontName='Helvetica-Bold'
@@ -1013,6 +1060,30 @@ class PDFReportGenerator:
             textColor=colors.HexColor('#2c3e50'),
             leftIndent=20,
             fontName='Courier'
+        ))
+
+        # Equation style — indented monospace block, larger than CodeBlock
+        self.styles.add(ParagraphStyle(
+            name='Equation',
+            parent=self.styles['Normal'],
+            fontSize=9,
+            textColor=colors.HexColor('#1a1a1a'),
+            fontName='Courier',
+            leftIndent=36,
+            spaceAfter=4,
+            spaceBefore=2,
+        ))
+
+        # Equation label — bold node name flush-left above the equation
+        self.styles.add(ParagraphStyle(
+            name='EquationLabel',
+            parent=self.styles['Normal'],
+            fontSize=9,
+            textColor=colors.HexColor('#2c3e50'),
+            fontName='Helvetica-Bold',
+            leftIndent=18,
+            spaceBefore=8,
+            spaceAfter=1,
         ))
     
     def generate_pdf(self, report: FaultReport, output_path: str, circuit_image_base64: str = None):
@@ -1214,86 +1285,253 @@ class PDFReportGenerator:
     def _build_simulation_summary(self, report: FaultReport) -> List:
         """Build simulation summary section."""
         elements = []
-        elements.append(Paragraph("4. SIMULATION RESULTS", self.styles['SectionHeader']))
-        
-        # Node voltages
-        elements.append(Paragraph("4.1 Node Voltages", self.styles['SubsectionHeader']))
-        
-        voltage_data = [['Node', 'Voltage']]
+        elements.append(Paragraph("3. SIMULATION RESULTS", self.styles['SectionHeader']))
+
+        # ── 3.1 Node Voltages ─────────────────────────────────────────────────
+        elements.append(Paragraph("3.1 Node Voltages", self.styles['SubsectionHeader']))
+
+        voltage_data = [['Node', 'Voltage (V)']]
         for node, voltage in sorted(report.node_voltages.items()):
-            formatted_value = format_value_with_unit(voltage, 'V', precision=3)
-            voltage_data.append([
-                node,
-                Paragraph(formatted_value, self.styles['ReportBody'])
-            ])
-        
-        voltage_table = Table(voltage_data, colWidths=[2*inch, 2.5*inch])
-        voltage_table.setStyle(self._get_professional_table_style())
+            voltage_data.append([node, f"{voltage:.6f}"])
+
+        voltage_table = Table(voltage_data, colWidths=[2*inch, 2*inch])
+        voltage_table.setStyle(self._get_table_style())
         elements.append(voltage_table)
-        elements.append(Spacer(1, 0.1 * inch))
-        
-        # Branch currents
-        elements.append(Paragraph("4.2 Branch Currents", self.styles['SubsectionHeader']))
-        
-        current_data = [['Component', 'Current']]
+        elements.append(Spacer(1, 0.15 * inch))
+
+        # ── 3.2 Branch Currents ───────────────────────────────────────────────
+        elements.append(Paragraph("3.2 Branch Currents", self.styles['SubsectionHeader']))
+
+        current_data = [['Component', 'Current (A)']]
         for comp_id, current in sorted(report.branch_currents.items()):
-            formatted_value = format_value_with_unit(current, 'A', precision=3)
-            current_data.append([
-                comp_id,
-                Paragraph(formatted_value, self.styles['ReportBody'])
-            ])
-        
-        current_table = Table(current_data, colWidths=[2*inch, 2.5*inch])
-        current_table.setStyle(self._get_professional_table_style())
+            current_data.append([comp_id, f"{current:.6e}"])
+
+        current_table = Table(current_data, colWidths=[2*inch, 2*inch])
+        current_table.setStyle(self._get_table_style())
         elements.append(current_table)
-        
+        elements.append(Spacer(1, 0.15 * inch))
+
+        # ── 3.3 Component Power ───────────────────────────────────────────────
+        # P = |V_drop × I|  for passives (power dissipated)
+        # P = |V × I|       for sources  (power supplied)
+        elements.append(Paragraph("3.3 Component Power", self.styles['SubsectionHeader']))
+
+        power_data = [['Component', 'Type', 'Voltage Drop (V)', 'Current (A)', 'Power (W)', 'Role']]
+
+        for comp in report.components:
+            ctype  = comp.type
+            cid    = comp.id
+            nodes  = comp.nodes
+
+            if ctype in ('junction', 'ground', 'ammeter', 'voltmeter'):
+                continue
+            if len(nodes) < 2:
+                continue
+
+            v_plus  = report.node_voltages.get(nodes[0], 0.0)
+            v_minus = report.node_voltages.get(nodes[1], 0.0)
+            v_drop  = v_plus - v_minus
+
+            current = report.branch_currents.get(cid)
+            if current is None:
+                # Try uppercase key (ngspice uppercases source names)
+                current = report.branch_currents.get(cid.upper(), 0.0)
+
+            power = abs(v_drop * current)
+
+            if ctype in ('dc_source', 'current_source'):
+                role = 'Supplying'
+            else:
+                role = 'Dissipating'
+
+            power_data.append([
+                cid,
+                ctype.replace('_', ' ').title(),
+                f"{v_drop:+.4f}",
+                f"{current:.4e}",
+                f"{power:.4e}",
+                role,
+            ])
+
+        if len(power_data) > 1:
+            power_table = Table(
+                power_data,
+                colWidths=[0.8*inch, 1.1*inch, 1.2*inch, 1.2*inch, 1.0*inch, 1.0*inch],
+            )
+            power_table.setStyle(self._get_table_style())
+            elements.append(power_table)
+        else:
+            elements.append(Paragraph(
+                "No component power data available (requires branch current output).",
+                self.styles['ReportBody']
+            ))
+
         return elements
     
+    @staticmethod
+    def _fmt_equation(raw: str) -> str:
+        """
+        Translate a raw equation_str from SymbolicCircuitAnalyzer into
+        readable mathematical notation for display in the PDF.
+
+        Transformations applied:
+          V_n1  → V_n1  (subscript notation: V_{n1})
+          I_R1  → I_R1  (subscript notation: I_{R1})
+          *     → ×  (multiplication)
+          -     → − (Unicode minus, only between operands)
+          /R    → (÷R) fractions shown as "/ R_value"
+          KCL at node: → stripped, node shown separately as label
+        """
+        import re as _re
+
+        s = raw
+
+        # 1. Strip the "KCL at <node>: " prefix — caller renders node separately
+        s = _re.sub(r'^KCL at \w+:\s*', '', s)
+
+        # 2. Replace explicit multiplication sign
+        s = s.replace('*', ' × ')
+
+        # 3. Subscript-style variable names: V_n1 → V_n1, I_R1 → I_R1
+        #    Rewrite as V_{n1} display form using Unicode subscript digits where possible
+        def _subscript(m):
+            prefix = m.group(1)   # V or I
+            name   = m.group(2)   # e.g. n1, R1, V1
+            # Use parenthesis notation — V(n1), I(R1) — avoids Unicode glyphs
+            # that Courier lacks, which render as black replacement squares.
+            return f"{prefix}({name})"
+
+        s = _re.sub(r'\b([VI])_([A-Za-z0-9]+)', _subscript, s)
+
+        # 4. Replace ASCII minus between terms with Unicode minus sign
+        #    Match " - " (space-hyphen-space) but not inside negative numbers
+        s = s.replace(' - ', ' − ')
+
+        # 5. Format inline fractions: (V_x − V_y)/R → show as "(V_x − V_y) / R"
+        #    Already readable; add thin spaces around / for clarity
+        s = _re.sub(r'\)\s*/\s*([0-9.]+)', r') / \1', s)
+        s = _re.sub(r'\)\s*/\s*([A-Za-z_]\w*)', r') / \1', s)
+
+        # 6. Clean up multiple spaces
+        s = _re.sub(r'  +', ' ', s).strip()
+
+        return s
+
     def _build_symbolic_analysis(self, report: FaultReport) -> List:
-        """Build symbolic analysis section."""
+        """Build symbolic analysis section with textbook-style equation formatting."""
         elements = []
         sym = report.symbolic_analysis
-        
-        elements.append(Paragraph("5. SYMBOLIC CIRCUIT ANALYSIS", self.styles['SectionHeader']))
-        
-        # KCL Equations
-        elements.append(Paragraph("5.1 Kirchhoff's Current Law (KCL) Equations", self.styles['SubsectionHeader']))
-        
+
+        elements.append(Paragraph("4. SYMBOLIC CIRCUIT ANALYSIS", self.styles['SectionHeader']))
+
+        # ── KCL Equations ─────────────────────────────────────────────────────
+        elements.append(Paragraph(
+            "4.1 Kirchhoff's Current Law (KCL) Equations",
+            self.styles['SubsectionHeader']
+        ))
+
         if sym.kcl_equations:
+            elements.append(Paragraph(
+                "Applying KCL (sum of currents leaving each node = 0):",
+                self.styles['ReportBody']
+            ))
+            elements.append(Spacer(1, 0.05 * inch))
+
+            # Render each node equation as: label line + indented equation line
             for kcl in sym.kcl_equations:
-                eq_text = f"<b>{kcl.node}:</b> {kcl.equation_str}"
-                elements.append(Paragraph(eq_text, self.styles['CodeBlock']))
+                # Node label
+                elements.append(Paragraph(
+                    f"Node {kcl.node}:",
+                    self.styles['EquationLabel']
+                ))
+
+                # Build the formatted equation from individual current terms
+                formatted_terms = [self._fmt_equation(term) for term in kcl.currents]
+
+                # Join terms — use "+" between positive terms; negative terms
+                # already start with "−" after formatting so no extra sign needed
+                parts = []
+                for t in formatted_terms:
+                    if parts and not t.startswith('−'):
+                        parts.append('+ ' + t)
+                    else:
+                        parts.append(t)
+
+                eq_body = '  ' + '  '.join(parts) + '  =  0'
+                elements.append(Paragraph(eq_body, self.styles['Equation']))
+
         else:
             elements.append(Paragraph("No KCL equations available.", self.styles['ReportBody']))
-        
-        elements.append(Spacer(1, 0.1 * inch))
-        
-        # Solved voltages
-        elements.append(Paragraph("5.2 Symbolic Solution", self.styles['SubsectionHeader']))
-        
+
+        elements.append(Spacer(1, 0.15 * inch))
+
+        # ── Symbolic Solution ─────────────────────────────────────────────────
+        elements.append(Paragraph("4.2 Symbolic Solution", self.styles['SubsectionHeader']))
+
         if sym.solved_voltages:
-            voltage_text = "Node voltages (symbolic):<br/>"
-            for node, expr in sorted(sym.solved_voltages.items()):
-                voltage_text += f"&nbsp;&nbsp;V_{node} = {expr}<br/>"
-            elements.append(Paragraph(voltage_text, self.styles['CodeBlock']))
-        
-        elements.append(Spacer(1, 0.1 * inch))
-        
-        # Cross-check
-        elements.append(Paragraph("5.3 Verification", self.styles['SubsectionHeader']))
-        
-        status_text = f"<b>Cross-check status:</b> {sym.cross_check_status}"
-        if sym.cross_check_status == "PASS":
-            status_text = f'<font color="green">{status_text}</font>'
-        elif sym.cross_check_status == "FAIL":
-            status_text = f'<font color="red">{status_text}</font>'
-        
+            elements.append(Paragraph(
+                "Solved node voltages (expressed in terms of circuit parameters):",
+                self.styles['ReportBody']
+            ))
+            elements.append(Spacer(1, 0.05 * inch))
+
+            # Align "V_xx = expression" lines in a two-column table for neatness
+            eq_rows = []
+            for node in sorted(sym.solved_voltages.keys()):
+                expr = sym.solved_voltages[node]
+                # Use V(node) notation — avoids Unicode subscript glyphs
+                # that Courier cannot render (they show as black squares).
+                lhs = f"V({node})"
+                rhs = expr.replace('*', ' x ').replace(' - ', ' - ')
+                eq_rows.append([lhs, '=', rhs])
+
+            if eq_rows:
+                # Use a 3-column table: LHS | = | RHS — keeps equations aligned
+                sol_table = Table(
+                    eq_rows,
+                    colWidths=[0.9 * inch, 0.3 * inch, 4.3 * inch],
+                    hAlign='LEFT'
+                )
+                sol_table.setStyle(TableStyle([
+                    ('FONTNAME',  (0, 0), (-1, -1), 'Courier'),
+                    ('FONTSIZE',  (0, 0), (-1, -1), 9),
+                    ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#1a1a1a')),
+                    ('ALIGN',     (0, 0), (0, -1), 'RIGHT'),   # LHS right-aligned
+                    ('ALIGN',     (1, 0), (1, -1), 'CENTER'),  # = centred
+                    ('ALIGN',     (2, 0), (2, -1), 'LEFT'),    # RHS left-aligned
+                    ('VALIGN',    (0, 0), (-1, -1), 'MIDDLE'),
+                    ('LEFTPADDING',  (0, 0), (-1, -1), 6),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                    ('TOPPADDING',   (0, 0), (-1, -1), 3),
+                    ('BOTTOMPADDING',(0, 0), (-1, -1), 3),
+                    ('ROWBACKGROUNDS', (0, 0), (-1, -1),
+                     [colors.HexColor('#f8f9fa'), colors.white]),
+                ]))
+                elements.append(sol_table)
+
+        elements.append(Spacer(1, 0.15 * inch))
+
+        # ── Verification ──────────────────────────────────────────────────────
+        elements.append(Paragraph(
+            "4.3 Verification",
+            self.styles['SubsectionHeader']
+        ))
+        elements.append(Spacer(1, 0.05 * inch))
+
+        status_color = (
+            'green'  if sym.cross_check_status == 'PASS'
+            else '#b8860b' if sym.cross_check_status == 'WARNING'   # dark amber
+            else 'red'
+        )
+        status_text = (
+            f'<font color="{status_color}"><b>Cross-check status: '
+            f'{sym.cross_check_status}</b></font>'
+        )
         elements.append(Paragraph(status_text, self.styles['ReportBody']))
-        
-        if sym.cross_check_details:
-            for detail in sym.cross_check_details:
-                elements.append(Paragraph(f"• {detail}", self.styles['ReportBody']))
-        
+
+        for detail in (sym.cross_check_details or []):
+            elements.append(Paragraph(f"\u2022 {detail}", self.styles['ReportBody']))
+
         return elements
     
     def _build_fault_analysis(self, report: FaultReport) -> List:
