@@ -71,44 +71,66 @@ FAULT_EXPLANATIONS = {
     ),
 }
 
-MULTI_FAULT_EXPLANATIONS = {
-    frozenset(["partial_short", "partial_open"]): (
-        "Multiple faults were detected simultaneously in this circuit: {short_component} "
-        "shows signs of a partial short, while {open_component} shows signs of a partial "
-        "open. This combination often arises from a single root cause — such as a power "
-        "surge or thermal event — stressing several components at once, though it can "
-        "also result from two independent failures. Because a short in one branch can "
-        "alter the current distribution seen by other components, {open_component}'s "
-        "deviation should be re-evaluated once {short_component} is repaired, as its "
-        "apparent severity may change."
-    ),
-    frozenset(["partial_short", "wrong_component_type"]): (
-        "Multiple faults were detected simultaneously in this circuit: {short_component} "
-        "shows signs of a partial short, and {wrong_component} appears to be the wrong "
-        "component type or value for this design. These are typically independent "
-        "issues — one electrical degradation, one assembly error — rather than a single "
-        "shared cause. It's recommended to first correct {wrong_component}'s type/value, "
-        "then re-run analysis to confirm whether the short in {short_component} persists "
-        "or was a downstream effect of the incorrect component."
-    ),
-    frozenset(["partial_open", "wrong_component_type"]): (
-        "Multiple faults were detected simultaneously in this circuit: {open_component} "
-        "shows signs of a partial open, and {wrong_component} appears to be the wrong "
-        "component type or value for this design. An incorrect component can alter "
-        "circuit loading in a way that presents as a partial open elsewhere, so it's "
-        "worth correcting {wrong_component} first and re-running the analysis before "
-        "treating {open_component} as a separate physical defect."
-    ),
-    frozenset(["partial_short", "partial_open", "wrong_component_type"]): (
-        "Multiple faults were detected simultaneously across this circuit: {short_component} "
-        "shows signs of a partial short, {open_component} shows signs of a partial open, "
-        "and {wrong_component} appears to be the wrong component type or value. This is "
-        "an unusual combination and suggests either a significant fault event affecting "
-        "several components at once, or that one root-cause fault (most likely the "
-        "incorrect component, {wrong_component}) is distorting the simulated behavior of "
-        "the others. Address {wrong_component} first, then re-run the analysis to confirm "
-        "which of the remaining faults are still present."
-    ),
+MULTI_FAULT_RECOMMENDATIONS = {
+    frozenset(["partial_short", "partial_open"]): {
+        "severity": "CRITICAL",
+        "explanation": (
+            "Two different components show resistance deviations in opposite "
+            "directions — {short_component} reads well below its design value, "
+            "and {open_component} reads well above it."
+        ),
+        "actions": [
+            "Check {short_component}'s value against what you originally set it to.",
+            "Check {open_component}'s value against what you originally set it to.",
+            "Reset any unintended changes and resimulate.",
+            "Since {short_component}'s deviation changes current flow through the "
+            "rest of the circuit, re-check {open_component} after fixing "
+            "{short_component} — its deviation may look different once the short is corrected.",
+        ]
+    },
+    frozenset(["partial_short", "wrong_component_type"]): {
+        "severity": "CRITICAL",
+        "explanation": (
+            "{short_component} shows a resistance well below its design value, "
+            "and {wrong_component}'s simulated behavior doesn't match its declared type."
+        ),
+        "actions": [
+            "Check {wrong_component}'s type and value first — a mismatched "
+            "component can affect current elsewhere in the circuit.",
+            "Check {short_component}'s value against what you originally set it to.",
+            "Correct {wrong_component}, then resimulate to see if {short_component}'s "
+            "deviation persists or was a side effect.",
+        ]
+    },
+    frozenset(["partial_open", "wrong_component_type"]): {
+        "severity": "HIGH",
+        "explanation": (
+            "{open_component} shows a resistance well above its design value, "
+            "and {wrong_component}'s simulated behavior doesn't match its declared type."
+        ),
+        "actions": [
+            "Check {wrong_component}'s type and value first — a mismatched "
+            "component can change how current reaches other parts of the circuit.",
+            "Check {open_component}'s value against what you originally set it to.",
+            "Correct {wrong_component}, then resimulate to see if {open_component}'s "
+            "deviation persists or was a side effect.",
+        ]
+    },
+    frozenset(["partial_short", "partial_open", "wrong_component_type"]): {
+        "severity": "CRITICAL",
+        "explanation": (
+            "Three separate components show deviations: {short_component} reads "
+            "well below its design value, {open_component} reads well above it, "
+            "and {wrong_component}'s behavior doesn't match its declared type."
+        ),
+        "actions": [
+            "Check {wrong_component}'s type and value first — it's the most likely "
+            "to be affecting the others' readings.",
+            "Check {short_component} and {open_component} against their original values.",
+            "Correct {wrong_component}, resimulate, and re-check whether the "
+            "other two deviations are still present.",
+        ]
+    },
 }
 
 
@@ -131,7 +153,7 @@ def get_fault_explanation(faults: List['FaultDetail']) -> str:
     # Single fault type
     if len(fault_types) == 1:
         fault = faults[0]  # Use first fault for template
-        template = FAULT_EXPLANATIONS.get(fault.fault_type, "Fault detected: {fault_type}")
+        template_data = FAULT_EXPLANATIONS.get(fault.fault_type, "Fault detected: {fault_type}")
         
         # Format values
         actual_val = format_value_with_unit(
@@ -144,7 +166,7 @@ def get_fault_explanation(faults: List['FaultDetail']) -> str:
         )
         deviation = f"{fault.deviation_metrics.get('deviation_pct', 0):+.1f}%"
         
-        return template.format(
+        return template_data.format(
             component_id=fault.component_id,
             actual_value=actual_val,
             nominal_value=nominal_val,
@@ -154,9 +176,9 @@ def get_fault_explanation(faults: List['FaultDetail']) -> str:
     
     # Multiple fault types
     fault_set = frozenset(fault_types)
-    template = MULTI_FAULT_EXPLANATIONS.get(fault_set)
+    multi_fault_data = MULTI_FAULT_RECOMMENDATIONS.get(fault_set)
     
-    if not template:
+    if not multi_fault_data:
         # Fallback for unexpected combinations
         return f"Multiple faults detected: {', '.join(fault_types)}. Each fault should be addressed individually."
     
@@ -170,7 +192,19 @@ def get_fault_explanation(faults: List['FaultDetail']) -> str:
         elif fault.fault_type == "wrong_component_type":
             component_map["wrong_component"] = fault.component_id
     
-    return template.format(**component_map)
+    # Handle case where same component has multiple fault types
+    components_involved = set(component_map.values())
+    if len(components_involved) == 1:
+        # All faults are on the same component
+        single_component = list(components_involved)[0]
+        return (
+            f"{single_component} exhibits multiple fault patterns simultaneously: "
+            f"{', '.join(fault_types)}. This suggests conflicting deviations detected "
+            f"by the ML model — check {single_component}'s value against its original "
+            f"design specification and verify the circuit behavior is as expected."
+        )
+    
+    return multi_fault_data["explanation"].format(**component_map)
 
 
 def _get_unit_from_fault(fault: 'FaultDetail') -> str:
@@ -193,18 +227,18 @@ def _get_unit_from_fault(fault: 'FaultDetail') -> str:
 # Formatting Utilities
 # ============================================================================
 
-def format_scientific(value: float, precision: int = 2) -> str:
+def format_scientific(value: float, precision: int = 3) -> str:
     """
     Format a number in scientific notation with proper superscripts for PDF.
     Uses <super> tags for reportlab Paragraph rendering.
     
     Examples:
-        100 → "1.00 × 10<super>2</super>"
-        0.005 → "5.00 × 10<super>-3</super>"
-        5000 → "5.00 × 10<super>3</super>"
+        100 → "1.000 × 10<super>2</super>"
+        0.005 → "5.000 × 10<super>-3</super>"
+        5000 → "5.000 × 10<super>3</super>"
     """
     if value == 0:
-        return "0.00"
+        return "0.000"
     
     # Get exponent and mantissa
     exponent = int(math.floor(math.log10(abs(value))))
@@ -218,13 +252,13 @@ def format_scientific(value: float, precision: int = 2) -> str:
         if abs(value) >= 1:
             return f"{value:.{precision}f}"
         else:
-            return f"{value:.{precision+2}f}".rstrip('0').rstrip('.')
+            return f"{value:.{precision}f}"
     
     # Use reportlab's super tag for superscript
     return f"{mantissa_str} × 10<super>{exponent}</super>"
 
 
-def format_value_with_unit(value: float, unit: str, precision: int = 2) -> str:
+def format_value_with_unit(value: float, unit: str, precision: int = 3) -> str:
     """Format a value with its unit in scientific notation."""
     if value is None:
         return "N/A"
@@ -308,7 +342,8 @@ class FaultReport:
     symbolic_analysis: Optional[SymbolicAnalysis]
     
     # Fault breakdown
-    detected_faults: List[FaultDetail]
+    structural_faults: List[str]  # Structural/connectivity faults
+    detected_faults: List[FaultDetail]  # ML-detected parametric faults
     ml_predictions: Dict[str, Any]
     
     # Recommendations
@@ -727,15 +762,67 @@ class RecommendationEngine:
     }
     
     @classmethod
-    def generate(cls, fault_type: str, severity: str) -> Recommendation:
-        """Generate recommendation for a fault."""
+    def generate(cls, fault_type: str, severity: str, faults: List) -> Recommendation:
+        """Generate recommendation for a single fault type."""
         template = cls.RECOMMENDATIONS.get(fault_type, cls.RECOMMENDATIONS["Normal"])
         
         return Recommendation(
             fault_type=fault_type,
             severity=severity,
             actions=template["actions"],
-            priority=0  # No longer used
+            priority=0
+        )
+    
+    @classmethod
+    def generate_multi_fault(cls, faults: List) -> Recommendation:
+        """Generate recommendation for multiple fault types."""
+        fault_types = list(set(f.fault_type for f in faults))
+        fault_set = frozenset(fault_types)
+        
+        multi_fault_data = MULTI_FAULT_RECOMMENDATIONS.get(fault_set)
+        
+        if not multi_fault_data:
+            # Fallback
+            return Recommendation(
+                fault_type="Multiple_Faults",
+                severity="HIGH",
+                actions=["Address each fault type individually."],
+                priority=0
+            )
+        
+        # Build component mapping
+        component_map = {}
+        for fault in faults:
+            if fault.fault_type == "partial_short":
+                component_map["short_component"] = fault.component_id
+            elif fault.fault_type == "partial_open":
+                component_map["open_component"] = fault.component_id
+            elif fault.fault_type == "wrong_component_type":
+                component_map["wrong_component"] = fault.component_id
+        
+        # Check if all faults are on the same component
+        components_involved = set(component_map.values())
+        if len(components_involved) == 1:
+            # All faults on same component - use simplified recommendation
+            single_component = list(components_involved)[0]
+            actions = [
+                f"Check {single_component}'s value against what you originally set it to.",
+                f"The ML model detected conflicting fault patterns for {single_component} — "
+                f"this may indicate the component value is far from its design specification, "
+                f"causing multiple different electrical behaviors.",
+                f"Reset {single_component} to its correct design value and resimulate.",
+                f"If the value is already correct, verify your design calculations and "
+                f"component selection are appropriate for this circuit."
+            ]
+        else:
+            # Multiple components - use original template
+            actions = [action.format(**component_map) for action in multi_fault_data["actions"]]
+        
+        return Recommendation(
+            fault_type="Multiple_Faults",
+            severity=multi_fault_data["severity"],
+            actions=actions,
+            priority=0
         )
 
 
@@ -754,6 +841,7 @@ class FaultReportGenerator:
                  netlist: str,
                  simulation_result: Dict,
                  ml_predictions: Dict,
+                 structural_faults: List[str],
                  nominal_values: Optional[Dict[str, float]] = None) -> FaultReport:
         """
         Generate complete fault report.
@@ -763,13 +851,16 @@ class FaultReportGenerator:
             netlist: Generated SPICE netlist
             simulation_result: ngspice output (voltages, currents)
             ml_predictions: Fault analyzer ML predictions
+            structural_faults: List of structural fault messages
             nominal_values: Expected nominal component values
         """
         start_time = datetime.now()
         
         # Determine overall status
         fault_type = ml_predictions.get("fault_type", "Unknown")
-        overall_status = "Healthy" if fault_type == "Normal" else "Fault(s) Detected"
+        has_ml_faults = fault_type != "Normal"
+        has_structural_faults = len(structural_faults) > 0
+        overall_status = "Healthy" if (not has_ml_faults and not has_structural_faults) else "Fault(s) Detected"
         
         # Build component snapshots
         components = self._build_component_snapshots(
@@ -799,8 +890,8 @@ class FaultReportGenerator:
             ml_predictions, nominal_values or {}
         )
         
-        # Generate recommendations
-        recommendations = self._generate_recommendations(detected_faults)
+        # Generate recommendations (considering both structural and parametric faults)
+        recommendations = self._generate_recommendations(detected_faults, structural_faults)
         # No sorting needed - display in order detected
         
         # Build final report
@@ -817,6 +908,7 @@ class FaultReportGenerator:
             branch_currents=branch_currents,
             nominal_baseline=nominal_values or {},
             symbolic_analysis=symbolic_analysis,
+            structural_faults=structural_faults,
             detected_faults=detected_faults,
             ml_predictions=ml_predictions,
             recommendations=recommendations,
@@ -866,8 +958,85 @@ class FaultReportGenerator:
         all_probs = ml_predictions.get("all_probabilities", {})
         drift_warnings = ml_predictions.get("drift_warnings", [])
         
-        # Main fault detection
-        if fault_type != "Normal":
+        # Check if Multiple_Faults - need to extract individual fault types
+        if fault_type == "Multiple_Faults":
+            # Get the fired fault types (those with probability >= 0.5)
+            fired_faults = [ft for ft, prob in all_probs.items() if prob >= 0.5 and ft != "Normal"]
+            
+            # Track which components have been assigned to which faults
+            used_components = set()
+            
+            # First pass: match faults to components with strong deviation signals
+            for fired_fault_type in fired_faults:
+                for drift in drift_warnings:
+                    comp_id = drift["component_id"]
+                    if comp_id in used_components:
+                        continue  # Already assigned to another fault
+                    
+                    deviation_pct = drift["deviation_pct"]
+                    
+                    # Determine if this component matches this fault type
+                    # Deviation is: (actual - nominal) / nominal * 100
+                    # Negative deviation = actual < nominal = SHORT (lower resistance)
+                    # Positive deviation = actual > nominal = OPEN (higher resistance)
+                    component_matches = False
+                    if fired_fault_type == "partial_short" and deviation_pct < -10:
+                        component_matches = True
+                    elif fired_fault_type == "partial_open" and deviation_pct > 10:
+                        component_matches = True
+                    elif fired_fault_type == "wrong_component_type":
+                        # Wrong component type can have any deviation
+                        component_matches = True
+                    
+                    if component_matches:
+                        severity = SeverityClassifier.classify(fired_fault_type, abs(deviation_pct))
+                        
+                        faults.append(FaultDetail(
+                            component_id=comp_id,
+                            fault_type=fired_fault_type,
+                            confidence=all_probs.get(fired_fault_type, confidence),
+                            severity=severity,
+                            deviation_metrics={
+                                "deviation_pct": deviation_pct,
+                                "actual": drift["actual"],
+                                "nominal": drift["nominal"]
+                            },
+                            explanation=None
+                        ))
+                        used_components.add(comp_id)
+                        break  # Found a match for this fault type
+            
+            # Second pass: assign any unmatched fired faults to the most deviated component
+            # (This handles cases where ML detects multiple faults but only one component shows deviation)
+            if len(faults) < len(fired_faults) and drift_warnings:
+                # Find the most deviated component
+                most_deviated = max(drift_warnings, key=lambda d: abs(d["deviation_pct"]))
+                
+                # Get fault types that haven't been matched yet
+                matched_fault_types = {f.fault_type for f in faults}
+                unmatched_faults = [ft for ft in fired_faults if ft not in matched_fault_types]
+                
+                # Assign all unmatched faults to the most deviated component
+                for fired_fault_type in unmatched_faults:
+                    severity = SeverityClassifier.classify(
+                        fired_fault_type, 
+                        abs(most_deviated["deviation_pct"])
+                    )
+                    
+                    faults.append(FaultDetail(
+                        component_id=most_deviated["component_id"],
+                        fault_type=fired_fault_type,
+                        confidence=all_probs.get(fired_fault_type, confidence),
+                        severity=severity,
+                        deviation_metrics={
+                            "deviation_pct": most_deviated["deviation_pct"],
+                            "actual": most_deviated["actual"],
+                            "nominal": most_deviated["nominal"]
+                        },
+                        explanation=None
+                    ))
+        elif fault_type != "Normal":
+            # Single fault type
             for drift in drift_warnings:
                 comp_id = drift["component_id"]
                 deviation_pct = drift["deviation_pct"]
@@ -884,27 +1053,60 @@ class FaultReportGenerator:
                         "actual": drift["actual"],
                         "nominal": drift["nominal"]
                     },
-                    explanation=None  # Will be filled by RAG
+                    explanation=None
                 ))
         
         return faults
     
-    def _generate_recommendations(self, faults: List[FaultDetail]) -> List[Recommendation]:
+    def _generate_recommendations(self, faults: List[FaultDetail], structural_faults: List[str]) -> List[Recommendation]:
         """Generate recommendations for all detected faults."""
-        recommendations = []
-        seen_types = set()
+        # If structural faults exist, those take priority
+        if structural_faults:
+            actions = ["Resolve all structural faults before performing parametric analysis:"]
+            for fault_msg in structural_faults:
+                # Extract actionable recommendation from fault message
+                if "open" in fault_msg.lower() and "switch" in fault_msg.lower():
+                    actions.append("Close the open switch to allow current to flow through the circuit.")
+                elif "open circuit" in fault_msg.lower():
+                    actions.append(f"Fix: {fault_msg}")
+                elif "short circuit" in fault_msg.lower():
+                    actions.append(f"Fix: {fault_msg}")
+                elif "ammeter" in fault_msg.lower():
+                    actions.append(f"Fix meter placement: {fault_msg}")
+                elif "voltmeter" in fault_msg.lower():
+                    actions.append(f"Fix meter placement: {fault_msg}")
+                else:
+                    actions.append(fault_msg)
+            
+            return [Recommendation(
+                fault_type="Structural Faults",
+                severity="CRITICAL",
+                actions=actions,
+                priority=0
+            )]
         
-        for fault in faults:
-            if fault.fault_type not in seen_types:
-                rec = RecommendationEngine.generate(fault.fault_type, fault.severity)
-                recommendations.append(rec)
-                seen_types.add(fault.fault_type)
-        
-        # Add "Normal" recommendation if no faults
+        # No structural faults - proceed with parametric fault recommendations
         if not faults:
-            recommendations.append(RecommendationEngine.generate("Normal", "INFO"))
+            return [RecommendationEngine.generate("Normal", "INFO", [])]
         
-        return recommendations
+        # Check if multiple fault types exist
+        fault_types = list(set(f.fault_type for f in faults))
+        
+        if len(fault_types) > 1:
+            # Multi-fault case - generate combined recommendation
+            return [RecommendationEngine.generate_multi_fault(faults)]
+        else:
+            # Single fault type - generate individual recommendations
+            recommendations = []
+            seen_types = set()
+            
+            for fault in faults:
+                if fault.fault_type not in seen_types:
+                    rec = RecommendationEngine.generate(fault.fault_type, fault.severity, faults)
+                    recommendations.append(rec)
+                    seen_types.add(fault.fault_type)
+            
+            return recommendations
     
     def _infer_topology(self, circuit_data: Dict) -> str:
         """Infer circuit topology type from structure."""
@@ -962,6 +1164,7 @@ def generate_fault_report(circuit_id: str,
                          netlist: str,
                          simulation_result: Dict,
                          ml_predictions: Dict,
+                         structural_faults: List[str] = None,
                          nominal_values: Optional[Dict[str, float]] = None,
                          add_explanations: bool = True) -> FaultReport:
     """
@@ -973,6 +1176,7 @@ def generate_fault_report(circuit_id: str,
         netlist: SPICE netlist string
         simulation_result: Dictionary with 'voltages' and 'currents' from ngspice
         ml_predictions: ML fault predictions from FaultAnalyzer
+        structural_faults: List of structural fault messages (disconnections, shorts, etc.)
         nominal_values: Expected nominal component values
         add_explanations: Whether to add hardcoded fault explanations (default True)
     
@@ -981,7 +1185,8 @@ def generate_fault_report(circuit_id: str,
     """
     generator = FaultReportGenerator(circuit_id)
     report = generator.generate(
-        circuit_data, netlist, simulation_result, ml_predictions, nominal_values
+        circuit_data, netlist, simulation_result, ml_predictions, 
+        structural_faults or [], nominal_values
     )
     
     if add_explanations:
@@ -1185,17 +1390,33 @@ class PDFReportGenerator:
         elements = []
         elements.append(Paragraph("1. EXECUTIVE SUMMARY", self.styles['SectionHeader']))
         
-        fault_count = len(report.detected_faults)
+        structural_count = len(report.structural_faults)
+        parametric_count = len(report.detected_faults)
         comp_count = len(report.components)
         
-        if fault_count == 0:
+        if structural_count == 0 and parametric_count == 0:
             summary_text = f"All {comp_count} components are operating within normal parameters. No faults detected."
         else:
-            summary_text = f"Detected {fault_count} fault(s) in circuit with {comp_count} components. "
-            summary_text += f"Primary fault type: <b>{report.ml_predictions.get('fault_type', 'Unknown')}</b> "
-            summary_text += f"(confidence: {report.ml_predictions.get('confidence', 0)*100:.1f}%)."
+            summary_parts = []
+            if structural_count > 0:
+                summary_parts.append(f"{structural_count} structural fault(s)")
+            if parametric_count > 0:
+                summary_parts.append(f"{parametric_count} parametric fault(s)")
+            
+            summary_text = f"Detected {' and '.join(summary_parts)} in circuit with {comp_count} components. "
+            
+            if parametric_count > 0:
+                summary_text += f"Primary ML fault type: <b>{report.ml_predictions.get('fault_type', 'Unknown')}</b> "
+                summary_text += f"(confidence: {report.ml_predictions.get('confidence', 0)*100:.1f}%)."
         
         elements.append(Paragraph(summary_text, self.styles['ReportBody']))
+        
+        # Add structural faults section if any exist
+        if structural_count > 0:
+            elements.append(Spacer(1, 0.1 * inch))
+            elements.append(Paragraph("<b>Structural Faults Detected:</b>", self.styles['ReportBody']))
+            for i, fault in enumerate(report.structural_faults, 1):
+                elements.append(Paragraph(f"{i}. {fault}", self.styles['ReportBody']))
         
         return elements
     
@@ -1286,35 +1507,59 @@ class PDFReportGenerator:
         """Build simulation summary section."""
         elements = []
         elements.append(Paragraph("3. SIMULATION RESULTS", self.styles['SectionHeader']))
+        
+        # If no simulation data (due to structural faults), show message
+        if not report.node_voltages and not report.branch_currents:
+            elements.append(Paragraph(
+                "Simulation could not complete due to structural faults. "
+                "Resolve all structural issues to obtain simulation results.",
+                self.styles['ReportBody']
+            ))
+            return elements
 
         # ── 3.1 Node Voltages ─────────────────────────────────────────────────
         elements.append(Paragraph("3.1 Node Voltages", self.styles['SubsectionHeader']))
 
-        voltage_data = [['Node', 'Voltage (V)']]
-        for node, voltage in sorted(report.node_voltages.items()):
-            voltage_data.append([node, f"{voltage:.6f}"])
+        if report.node_voltages:
+            voltage_data = [['Node', 'Voltage (V)']]
+            for node, voltage in sorted(report.node_voltages.items()):
+                voltage_data.append([node, Paragraph(format_scientific(voltage, 3), self.styles['ReportBody'])])
 
-        voltage_table = Table(voltage_data, colWidths=[2*inch, 2*inch])
-        voltage_table.setStyle(self._get_table_style())
-        elements.append(voltage_table)
+            voltage_table = Table(voltage_data, colWidths=[2*inch, 2*inch])
+            voltage_table.setStyle(self._get_table_style())
+            elements.append(voltage_table)
+        else:
+            elements.append(Paragraph("No voltage data available.", self.styles['ReportBody']))
+        
         elements.append(Spacer(1, 0.15 * inch))
 
         # ── 3.2 Branch Currents ───────────────────────────────────────────────
         elements.append(Paragraph("3.2 Branch Currents", self.styles['SubsectionHeader']))
 
-        current_data = [['Component', 'Current (A)']]
-        for comp_id, current in sorted(report.branch_currents.items()):
-            current_data.append([comp_id, f"{current:.6e}"])
+        if report.branch_currents:
+            current_data = [['Component', 'Current (A)']]
+            for comp_id, current in sorted(report.branch_currents.items()):
+                current_data.append([comp_id, Paragraph(format_scientific(current, 3), self.styles['ReportBody'])])
 
-        current_table = Table(current_data, colWidths=[2*inch, 2*inch])
-        current_table.setStyle(self._get_table_style())
-        elements.append(current_table)
+            current_table = Table(current_data, colWidths=[2*inch, 2*inch])
+            current_table.setStyle(self._get_table_style())
+            elements.append(current_table)
+        else:
+            elements.append(Paragraph("No current data available.", self.styles['ReportBody']))
+        
         elements.append(Spacer(1, 0.15 * inch))
 
         # ── 3.3 Component Power ───────────────────────────────────────────────
         # P = |V_drop × I|  for passives (power dissipated)
         # P = |V × I|       for sources  (power supplied)
         elements.append(Paragraph("3.3 Component Power", self.styles['SubsectionHeader']))
+
+        if not report.node_voltages or not report.branch_currents:
+            elements.append(Paragraph(
+                "No power data available (simulation incomplete).",
+                self.styles['ReportBody']
+            ))
+            return elements
 
         power_data = [['Component', 'Type', 'Voltage Drop (V)', 'Current (A)', 'Power (W)', 'Role']]
 
@@ -1344,12 +1589,15 @@ class PDFReportGenerator:
             else:
                 role = 'Dissipating'
 
+            # Format voltage drop with sign
+            v_drop_formatted = f"{'+' if v_drop >= 0 else ''}{format_scientific(abs(v_drop), 3)}"
+            
             power_data.append([
                 cid,
                 ctype.replace('_', ' ').title(),
-                f"{v_drop:+.4f}",
-                f"{current:.4e}",
-                f"{power:.4e}",
+                Paragraph(v_drop_formatted, self.styles['ReportBody']),
+                Paragraph(format_scientific(current, 3), self.styles['ReportBody']),
+                Paragraph(format_scientific(power, 3), self.styles['ReportBody']),
                 role,
             ])
 
@@ -1362,7 +1610,7 @@ class PDFReportGenerator:
             elements.append(power_table)
         else:
             elements.append(Paragraph(
-                "No component power data available (requires branch current output).",
+                "No component power data available.",
                 self.styles['ReportBody']
             ))
 
@@ -1626,15 +1874,25 @@ class PDFReportGenerator:
         
         elements.append(Spacer(1, 0.15 * inch))
         
-        # ML Predictions
+        # ML Predictions - show "Not Applicable" if structural faults exist
         elements.append(Paragraph("B. ML Model Output", self.styles['SubsectionHeader']))
         
-        ml_text = f"<b>Predicted Fault Type:</b> {report.ml_predictions.get('fault_type', 'Unknown')}<br/>"
-        ml_text += f"<b>Confidence:</b> {report.ml_predictions.get('confidence', 0)*100:.2f}%<br/><br/>"
-        ml_text += "<b>All Probabilities:</b><br/>"
-        
-        for fault_type, prob in report.ml_predictions.get('all_probabilities', {}).items():
-            ml_text += f"&nbsp;&nbsp;{fault_type}: {prob*100:.2f}%<br/>"
+        if report.structural_faults:
+            # Circuit has structural faults - ML classification not applicable
+            ml_text = "<b>Status:</b> Not Applicable<br/><br/>"
+            ml_text += "The circuit is inactive because structural faults prevent normal operation. "
+            ml_text += "Fault classification is skipped until all structural issues are resolved.<br/><br/>"
+            ml_text += "<b>Structural Issues Detected:</b><br/>"
+            for fault in report.structural_faults:
+                ml_text += f"&nbsp;&nbsp;• {fault}<br/>"
+        else:
+            # Normal ML output
+            ml_text = f"<b>Predicted Fault Type:</b> {report.ml_predictions.get('fault_type', 'Unknown')}<br/>"
+            ml_text += f"<b>Confidence:</b> {report.ml_predictions.get('confidence', 0)*100:.2f}%<br/><br/>"
+            ml_text += "<b>All Probabilities:</b><br/>"
+            
+            for fault_type, prob in report.ml_predictions.get('all_probabilities', {}).items():
+                ml_text += f"&nbsp;&nbsp;{fault_type}: {prob*100:.2f}%<br/>"
         
         elements.append(Paragraph(ml_text, self.styles['ReportBody']))
         
