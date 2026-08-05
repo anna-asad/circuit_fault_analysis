@@ -400,22 +400,23 @@
 }
 
 .ai-icon {
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1;
 }
 
 .ai-explanation-header strong {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: #5b21b6;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .ai-explanation-text {
-  font-size: 12px;
-  color: #4c1d95;
-  line-height: 1.6;
-  margin: 0;
+  font-size: 0.75rem !important;
+  color: #4c1d95 !important;
+  line-height: 1.5 !important;
+  margin: 0 !important;
+  font-family:system-ui,-apple-system,sans-serif !important;
 }
 
 .ai-explanation-error {

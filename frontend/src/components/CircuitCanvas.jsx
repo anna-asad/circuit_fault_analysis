@@ -766,8 +766,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
           data: {
             ...n.data,
             value: nextValue,
-            // Set nominalValue on first edit if not yet set, then lock it
-            nominalValue: n.data.nominalValue !== undefined ? n.data.nominalValue : nextValue,
+            // nominalValue is set at drop time and never changed here.
             isEditing: false,
             valueDraft: undefined,
             valueError: null,
@@ -1102,7 +1101,10 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
           componentType: type,
           componentId: componentId,  // Store for circuit conversion
           value,
-          nominalValue: undefined,  // Don't set nominal until first simulation
+          // nominalValue is the default/design value — locked at component creation
+          // and never changed again, even when the user edits the current value.
+          // This gives the ML model a stable reference to compare against.
+          nominalValue: value,
           state: type === 'switch' ? 'open' : undefined,  // Initial switch state
           rotation: 0,
           onEditValue:   handleEditValue,
