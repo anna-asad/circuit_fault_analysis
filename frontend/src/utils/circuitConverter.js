@@ -269,18 +269,17 @@ export function convertCircuitToBackendFormat(nodes, edges) {
   // CRITICAL: design_values must be the ORIGINAL/INTENDED values when the
   // circuit was first designed, NOT the current (potentially faulty) values.
   // 
-  // The frontend must preserve comp.data.nominalValue (set when component is
-  // first dropped) and never update it when the user edits comp.data.value.
-  // This allows the ML model to compute deviation = (actual - nominal) / nominal.
+  // The frontend sets comp.data.nominalValue on first edit (undefined initially).
+  // For first-time circuits (nominalValue still undefined), use current value.
+  // This ensures the first simulation has zero deviation.
   const designValues = {};
   nonMeters.forEach(comp => {
     if (comp.type === 'resistor' || comp.type === 'capacitor' || comp.type === 'inductor' || comp.type === 'current_source') {
-      // Use nominalValue if available (set when component first created),
-      // otherwise fall back to current value (for backwards compatibility)
       const compNode = nodes.find(n => 
         (n.data?.componentId || n.data?.label || n.id).replace(/[^\x00-\x7F]/g, '').trim() === comp.id
       );
       const nominalValue = compNode?.data?.nominalValue;
+      // Use nominalValue if set (locked after first edit), otherwise use current value
       designValues[comp.id] = nominalValue !== undefined ? nominalValue : comp.value;
     }
   });

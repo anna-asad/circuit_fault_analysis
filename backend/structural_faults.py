@@ -70,6 +70,7 @@ class StructuralFaultDetector:
     def detect_faults(self, circuit_data: Dict, simulation_result: Dict) -> List[str]:
         self.faults = []
         self._check_missing_ground(circuit_data)
+        self._check_open_switches(circuit_data)  # NEW: Check for open switches
         self._check_unconnected_component_terminals(circuit_data)
         self._check_open_circuits(circuit_data)
         self._check_short_circuits(circuit_data, simulation_result)
@@ -88,6 +89,20 @@ class StructuralFaultDetector:
             return
         if not any(ground in c.get("nodes", []) for c in comps):
             self.faults.append(f"Missing ground reference: no component connected to '{ground}'.")
+
+    def _check_open_switches(self, circuit_data: Dict):
+        """Check for open switches that break the circuit."""
+        for comp in circuit_data.get("components", []):
+            if comp.get("type") == "switch":
+                # Check both 'closed' field and 'state' field
+                is_closed = comp.get("closed", True)
+                state = comp.get("state", "closed")
+                
+                # Switch is open if either closed=False OR state='open'
+                if not is_closed or state == "open":
+                    self.faults.append(
+                        f"Open circuit: switch {comp.get('id', 'SW')} is open, preventing current flow."
+                    )
 
     def _check_open_circuits(self, circuit_data: Dict):
         uf     = _build_uf_excluding(circuit_data, exclude_types=("voltmeter",))

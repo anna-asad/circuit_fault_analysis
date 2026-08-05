@@ -624,17 +624,38 @@ async def generate_report_pdf_endpoint(circuit: CircuitModel):
         # Generate netlist
         netlist = generate_netlist(circuit_dict)
         
+        # Detect structural faults BEFORE simulation
+        pre_sim_structural_faults = detect_structural_faults(circuit_dict, simulation_result={})
+        
+        # Check for fatal structural faults (meter placement issues)
+        meter_faults = [f for f in pre_sim_structural_faults 
+                       if 'ammeter' in f.lower() or 'voltmeter' in f.lower()]
+        
+        if meter_faults:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot generate report: {meter_faults[0]}"
+            )
+        
         # Run simulation
         runner = SimulationRunner()
         sim_result = runner.run_simulation(netlist, circuit_data=circuit_dict)
         
+        # If simulation fails, still generate report showing structural faults
         if not sim_result["success"]:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Simulation failed: {sim_result['error']}"
-            )
+            # Use empty simulation results
+            sim_result = {
+                "success": False,
+                "voltages": {},
+                "currents": {},
+                "error": sim_result.get("error", "Simulation failed")
+            }
         
-        # Run ML analysis
+        # Detect structural faults AFTER simulation (includes short circuit detection)
+        post_sim_structural_faults = detect_structural_faults(circuit_dict, sim_result)
+        all_structural_faults = list(set(pre_sim_structural_faults + post_sim_structural_faults))
+        
+        # Run ML analysis (only if no fatal structural faults)
         analyzer = get_fault_analyzer()
         ml_predictions = analyzer.analyze(
             circuit_data=circuit_dict,
@@ -651,6 +672,7 @@ async def generate_report_pdf_endpoint(circuit: CircuitModel):
             netlist=netlist,
             simulation_result=sim_result,
             ml_predictions=ml_predictions,
+            structural_faults=all_structural_faults,
             nominal_values=circuit_dict.get("design_values"),
             add_explanations=True  # Use hardcoded explanations (no API calls)
         )

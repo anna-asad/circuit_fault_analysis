@@ -61,14 +61,47 @@ def _extract_features(
 
     # design_values = the original intended component values (set at drop time in
     # the frontend and sent in every /api/simulate payload).
-    # Always prefer these over topology matching — they are circuit-specific and
-    # exact.  Only fall back to topology_matcher when design_values are absent
-    # (e.g. old payloads from external callers).
-    print(f"DEBUG design_values received: {design_values}")
+    # 
+    # CRITICAL FIX: For first-time simulations, component_values ARE the nominal
+    # values (no deviation). Only compare against design_values if they differ
+    # from the actual values (meaning the user edited them after creation).
+    # 
+    # This prevents false positives where a 12kΩ resistor is flagged as "1100%
+    # deviated" just because it was created with a 1kΩ default value initially.
+    print("=" * 80)
+    print("NOMINAL VALUE SELECTION DEBUG")
+    print("=" * 80)
+    print(f"component_values received: {component_values}")
+    print(f"design_values received: {design_values}")
+    print(f"circuit_data components: {[c.get('id') for c in circuit_data.get('components', [])]}")
+    
     if design_values:
-        nominal = {k: v for k, v in design_values.items() if v and v != 0}
+        # Check if design_values are actually different from component_values.
+        # If they're the same (or very close), this is a first-time simulation
+        # and we should treat component_values as nominal (no deviation).
+        values_are_identical = all(
+            abs(component_values.get(k, 0) - v) < 1e-9
+            for k, v in design_values.items()
+            if v and v != 0
+        )
+        
+        if values_are_identical:
+            # First simulation: actual values ARE the nominal values
+            nominal = {k: v for k, v in component_values.items()}
+            print(f"\nFIRST SIMULATION: Using component_values as nominal (no deviation)")
+            print(f"nominal = {nominal}")
+        else:
+            # Subsequent simulation: user changed values after creation
+            nominal = {k: v for k, v in design_values.items() if v and v != 0}
+            print(f"\nSUBSEQUENT SIMULATION: Using DESIGN_VALUES as nominal")
+            print(f"nominal = {nominal}")
     else:
-        nominal, _ = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
+        print(f"\nNo design_values provided, attempting NOMINAL LOOKUP...")
+        nominal, match_info = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
+        print(f"Nominal lookup returned: {nominal}")
+        print(f"Match info: {match_info}")
+    
+    print("=" * 80)
 
     deviations = []
     for name, val in component_values.items():
@@ -104,6 +137,18 @@ def _extract_features(
         "n_components_deviated_over_20pct": float(n_over_20),
     }
     
+    # DEBUG: Print complete feature vector
+    print("=" * 80)
+    print("FEATURE VECTOR DEBUG")
+    print("=" * 80)
+    print(f"Component values: {component_values}")
+    print(f"Nominal values used: {nominal}")
+    print(f"Deviations: {deviations}")
+    print("\nFeatures:")
+    for key, value in features.items():
+        print(f"  {key:35s}: {value}")
+    print("=" * 80)
+    
     return features
 
 
@@ -123,12 +168,24 @@ def _compute_drift_warnings(
         { component_id, actual, nominal, deviation_pct, message }
     Empty list if no topology match is available or no component has drifted.
     """
-    # Use design_values if provided (circuit-specific nominals), otherwise
-    # fall back to topology matching with global nominal_lookup
+    # Use design_values if provided (circuit-specific nominals), but only if they
+    # differ from the actual component_values (to avoid false positives on first sim).
     if design_values:
-        nominal = {k: v for k, v in design_values.items() if v and v != 0}
+        values_are_identical = all(
+            abs(component_values.get(k, 0) - v) < 1e-9
+            for k, v in design_values.items()
+            if v and v != 0
+        )
+        
+        if values_are_identical:
+            # First simulation: no drift (actual = nominal)
+            return []
+        else:
+            # Subsequent simulation: compare against design_values
+            nominal = {k: v for k, v in design_values.items() if v and v != 0}
     else:
         nominal, _ = map_to_nominal_values(component_values, nominal_lookup, circuit_data)
+    
     if not nominal:
         return []
 
@@ -145,7 +202,7 @@ def _compute_drift_warnings(
                 "component_id":  comp_id,
                 "actual":        actual,
                 "nominal":       nom,
-                "deviation_pct": round(abs(pct), 1),
+                "deviation_pct": round(pct, 1),  # Keep sign: negative = SHORT, positive = OPEN
                 "message": (
                     f"{comp_id} has drifted {abs(pct):.1f}% {direction} than its "
                     f"nominal value (actual: {actual:.4g}, nominal: {nom:.4g})."
@@ -239,6 +296,33 @@ class FaultAnalyzer:
             classes = list(self._clf.classes_[i]) if hasattr(self._clf, "estimators_") else [0, 1]
             p_yes   = arr[classes.index(1)] if 1 in classes else 0.0
             label_probs[label] = float(p_yes)
+
+        # ── POST-PROCESSING CONSTRAINTS ──────────────────────────────────────
+        # 1. Mutual exclusion: partial_short and partial_open are physically
+        #    incompatible (opposite deviations). If both fire, keep only the
+        #    one with higher probability.
+        if (label_probs.get("partial_short", 0) >= THRESHOLD and 
+            label_probs.get("partial_open", 0) >= THRESHOLD):
+            if label_probs["partial_short"] > label_probs["partial_open"]:
+                label_probs["partial_open"] = 0.0  # Suppress the weaker one
+            else:
+                label_probs["partial_short"] = 0.0  # Suppress the weaker one
+        
+        # 2. Minimum margin rule: For labels that cleared threshold, check if
+        #    they have sufficient margin over the "Normal" baseline (the absence
+        #    of that specific fault). This prevents borderline flip-flops where
+        #    predictions are barely above threshold with no confidence.
+        #    
+        #    Rule: A label only fires if it's at least MIN_MARGIN above the
+        #    threshold itself, giving a "buffer zone" for uncertain predictions.
+        MIN_MARGIN = 0.10  # 10% minimum gap above threshold
+        MIN_CONFIDENCE = THRESHOLD + MIN_MARGIN  # 0.5 + 0.1 = 0.6
+        
+        # Apply minimum confidence threshold to prevent borderline predictions
+        for label, prob in label_probs.items():
+            if THRESHOLD <= prob < MIN_CONFIDENCE:
+                # Prediction is above threshold but not confident enough
+                label_probs[label] = THRESHOLD - 0.01  # Drop below threshold
 
         fired     = [lbl for lbl, p in label_probs.items() if p >= THRESHOLD]
         top_label, top_prob = max(label_probs.items(), key=lambda kv: kv[1])
