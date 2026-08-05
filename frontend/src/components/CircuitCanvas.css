@@ -340,3 +340,44 @@
   user-select: none;
   line-height: 1;
 }
+
+/* ── Set as Design Value button ─────────────────────────────────────────── */
+.value-editor-design {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #e5e7eb;
+  width: 100%;
+}
+
+.value-editor-btn-design {
+  appearance: none;
+  border: 1.5px solid #6366f1;
+  background: transparent;
+  color: #6366f1;
+  font-size: 5px;
+  font-weight: 600;
+  font-family: monospace;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.15s, color 0.15s;
+}
+
+.value-editor-btn-design:hover {
+  background: #6366f1;
+  color: #ffffff;
+}
+
+.value-editor-design-hint {
+  font-size: 5px;
+  color: #9ca3af;
+  font-style: italic;
+  margin: 0;
+  text-align: center;
+  line-height: 1.3;
+}
