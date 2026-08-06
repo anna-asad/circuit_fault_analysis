@@ -1,5 +1,8 @@
+/* Force light theme inside the lab library — global :root uses dark-mode
+   variables that make h1/h2 nearly white on this light background. */
 .lab-library {
   min-height: 100vh;
+  color-scheme: light;
   background: linear-gradient(160deg, #f0f0e8 0%, #e8ebe4 50%, #dfe8f0 100%);
   color: #1a1a1a;
 }
@@ -11,21 +14,24 @@
   gap: 24px;
   padding: 32px 40px 24px;
   border-bottom: 1px solid #c8c8c0;
-  background: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.85);
 }
 
-.lab-library-header h1 {
+.lab-library-title {
   font-size: 28px;
   font-weight: 800;
   font-family: system-ui, sans-serif;
-  margin-bottom: 8px;
+  margin: 0 0 8px;
+  color: #111827;
+  letter-spacing: -0.02em;
 }
 
 .lab-library-tagline {
   font-size: 15px;
-  color: #4a5568;
+  color: #374151;
   max-width: 520px;
   line-height: 1.5;
+  margin: 0;
 }
 
 .lab-free-play-btn {
@@ -52,15 +58,38 @@
   margin-bottom: 40px;
 }
 
-.lab-module-header h2 {
+.lab-module-title {
   font-size: 20px;
-  margin-bottom: 4px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: #111827;
 }
 
-.lab-module-header p {
-  color: #64748b;
+.lab-module-desc {
+  color: #4b5563;
   font-size: 14px;
-  margin-bottom: 16px;
+  margin: 0 0 16px;
+}
+
+.lab-coming-soon {
+  background: #f8fafc;
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 28px;
+  text-align: center;
+  color: #334155;
+}
+
+.lab-coming-soon p {
+  margin: 0 0 6px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.lab-coming-soon-detail {
+  font-weight: 400 !important;
+  font-size: 14px;
+  color: #64748b !important;
 }
 
 .lab-cards {
@@ -78,6 +107,7 @@
   flex-direction: column;
   gap: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  color: #1f2937;
 }
 
 .lab-card--completed {
@@ -99,29 +129,34 @@
   border-radius: 999px;
 }
 
-.lab-status--not_started { background: #f1f5f9; color: #64748b; }
+.lab-status--not_started { background: #f1f5f9; color: #475569; }
 .lab-status--in_progress { background: #fef3c7; color: #b45309; }
 .lab-status--completed   { background: #dcfce7; color: #15803d; }
 
 .lab-duration {
   font-size: 12px;
-  color: #94a3b8;
+  color: #6b7280;
 }
 
-.lab-card h3 {
+.lab-card-title {
   font-size: 16px;
+  font-weight: 700;
   line-height: 1.3;
+  margin: 0;
+  color: #111827;
 }
 
 .lab-card-subtitle {
   font-size: 13px;
-  color: #64748b;
+  color: #4b5563;
+  margin: 0;
 }
 
 .lab-card-ref {
   font-size: 12px;
-  color: #7c3aed;
+  color: #6d28d9;
   font-weight: 600;
+  margin: 0;
 }
 
 .lab-card-meta {
@@ -149,7 +184,7 @@
 
 .lab-objectives {
   font-size: 12px;
-  color: #475569;
+  color: #374151;
   padding-left: 18px;
   margin: 4px 0;
   flex: 1;
@@ -165,7 +200,7 @@
   border: none;
   border-radius: 8px;
   background: #2c5282;
-  color: white;
+  color: #ffffff;
   font-weight: 600;
   cursor: pointer;
 }

@@ -6,7 +6,7 @@ import ResultsPage from './ResultsPage';
 import PredictPanel from '../components/PredictPanel';
 import DiagnoseChallenge from '../components/DiagnoseChallenge';
 import { getLessonById } from '../data/lessons';
-import { loadPresetCircuit } from '../utils/presetCircuitLoader';
+import { loadPresetCircuit, getDatasetCircuit } from '../utils/presetCircuitLoader';
 import { markLessonStarted, markLessonCompleted } from '../utils/progressStorage';
 import './LessonPlayer.css';
 
@@ -35,7 +35,23 @@ function LessonPlayer({ lessonId, onBack, onGoToLibrary }) {
     markLessonStarted(lesson.id);
 
     const inject = lesson.challenge?.inject ?? null;
-    const preset = loadPresetCircuit(lesson.circuitKey, { inject });
+    let presetOptions = {};
+    if (lesson.challenge?.datasetFault && lesson.datasetCircuitId) {
+      const ds = getDatasetCircuit(lesson.datasetCircuitId);
+      const faultKey = `fault_${lesson.challenge.datasetFault}`;
+      const faultRow = ds?.[faultKey];
+      if (faultRow) {
+        presetOptions = {
+          faultValues: faultRow.component_values,
+          nominalValues: { ...ds.design_values, ...ds.sources },
+        };
+      }
+    } else if (inject) {
+      // legacy multiplier-based inject (unused in current lessons)
+      presetOptions = {};
+    }
+
+    const preset = loadPresetCircuit(lesson.circuitKey, presetOptions);
     setPresetLoad(preset);
     setComponentCounters(preset.counters ?? {});
     setStepIndex(0);
