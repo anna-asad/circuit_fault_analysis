@@ -783,8 +783,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
           data: {
             ...n.data,
             value: nextValue,
-            // Set nominalValue on first edit if not yet set, then lock it
-            nominalValue: n.data.nominalValue !== undefined ? n.data.nominalValue : nextValue,
+            // nominalValue is set at drop time and never changed here.
             isEditing: false,
             valueDraft: undefined,
             valueError: null,
