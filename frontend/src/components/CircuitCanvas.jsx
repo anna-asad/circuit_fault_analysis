@@ -454,7 +454,7 @@ function getNodeStyle(type) {
 }
 
 // ── ValueEditor ───────────────────────────────────────────────────
-function ValueEditor({ valueDraft, error, onChange, onSave, onCancel }) {
+function ValueEditor({ valueDraft, error, onChange, onSave, onCancel, onSetDesign, isResistor }) {
   const stopProp = useCallback((e) => e.stopPropagation(), []);
   return (
     <div className="value-editor" onClick={stopProp}>
@@ -475,6 +475,21 @@ function ValueEditor({ valueDraft, error, onChange, onSave, onCancel }) {
         <button type="button" className="value-editor-btn" onClick={onSave}>✓</button>
         <button type="button" className="value-editor-btn" onClick={onCancel}>✕</button>
       </div>
+      {isResistor && onSetDesign && (
+        <div className="value-editor-design">
+          <button
+            type="button"
+            className="value-editor-btn-design"
+            onClick={onSetDesign}
+            title="Reset the design (nominal) baseline to this value"
+          >
+            📌 Set as Design Value
+          </button>
+          <p className="value-editor-design-hint">
+            Future edits will use this as the baseline.
+          </p>
+        </div>
+      )}
       {error && <div className="value-editor-error">{error}</div>}
     </div>
   );
@@ -629,6 +644,8 @@ function ComponentNode({ id, data, mode }) {
             onChange={(e) => data.onChangeDraft?.(id, e.target.value)}
             onSave={() => data.onSaveDraft?.(id)}
             onCancel={() => data.onCancelDraft?.(id)}
+            onSetDesign={() => data.onResetDesignValue?.(id)}
+            isResistor={componentType === 'resistor'}
           />
         ) : (
           // Meters have no user-editable value — show a read-only placeholder
@@ -784,6 +801,29 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
           ? { ...n, data: { ...n.data, isEditing: false, valueDraft: undefined, valueError: null } }
           : n
       )
+    );
+  }, [setNodes]);
+
+  const handleResetDesignValue = useCallback((nodeId) => {
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.id !== nodeId) return n;
+        const nextValue = Number(n.data?.valueDraft ?? '');
+        if (!Number.isFinite(nextValue)) {
+          return { ...n, data: { ...n.data, valueError: 'Enter a valid numeric value' } };
+        }
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            value:        nextValue,
+            nominalValue: nextValue,
+            isEditing:    false,
+            valueDraft:   undefined,
+            valueError:   null,
+          },
+        };
+      })
     );
   }, [setNodes]);
 
@@ -1102,21 +1142,22 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
           componentType: type,
           componentId: componentId,  // Store for circuit conversion
           value,
-          nominalValue: undefined,  // Don't set nominal until first simulation
+          nominalValue: value,
           state: type === 'switch' ? 'open' : undefined,  // Initial switch state
           rotation: 0,
           onEditValue:   handleEditValue,
           onChangeDraft: handleChangeDraft,
           onSaveDraft:   handleSaveDraft,
-          onCancelDraft: handleCancelDraft,
-          onToggleSwitch: handleToggleSwitch,
+          onCancelDraft:      handleCancelDraft,
+          onResetDesignValue: handleResetDesignValue,
+          onToggleSwitch:     handleToggleSwitch,
         },
         style: getNodeStyle(type),
       };
 
       setNodes((nds) => [...nds, newNode]);
     },
-    [handleEditValue, handleChangeDraft, handleSaveDraft, handleCancelDraft, handleToggleSwitch, setNodes, nodes, componentCounters, setComponentCounters]
+    [handleEditValue, handleChangeDraft, handleSaveDraft, handleCancelDraft, handleResetDesignValue, handleToggleSwitch, setNodes, nodes, componentCounters, setComponentCounters]
   );
 
   const onDragOver = useCallback((event) => {
