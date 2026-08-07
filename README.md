@@ -2,6 +2,8 @@
 
 A machine learning system for classifying electronic circuit faults using ngspice simulations.
 
+> **Education Simulator:** See [EDUCATION_SIMULATOR.md](./EDUCATION_SIMULATOR.md) for the guided lab-based learning UI (Lab Library, lessons, predict/simulate loop, fault challenges).
+
 ## Project Structure
 
 ```

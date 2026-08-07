@@ -1,0 +1,184 @@
+.lesson-player {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f0f0e8;
+}
+
+.lesson-header {
+  height: 56px;
+  background: #e0e0d8;
+  border-bottom: 1px solid #999;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.lesson-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.lesson-header-left h1 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.lesson-subtitle {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.lesson-back-btn {
+  padding: 6px 12px;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.lesson-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lesson-step-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  background: white;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+}
+
+.lesson-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.lesson-sidebar {
+  width: 320px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  background: #fafaf8;
+  border-right: 1px solid #ccc;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lesson-panel {
+  background: white;
+  border: 1px solid #d4d4cc;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.lesson-panel h3 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.lesson-panel ul {
+  font-size: 13px;
+  padding-left: 18px;
+  color: #334155;
+}
+
+.lesson-step-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.lesson-step-list li {
+  padding: 8px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.lesson-step-list li.active {
+  background: #e0e7ff;
+  border-left: 3px solid #4f46e5;
+}
+
+.lesson-step-list li.done {
+  opacity: 0.6;
+}
+
+.step-type {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #6366f1;
+}
+
+.step-text {
+  display: block;
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+.lesson-current-step p {
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.lesson-step-nav {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.lesson-step-nav button {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.lesson-step-nav button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.lesson-complete-btn {
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: #15803d;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lesson-canvas-area {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+
+.lesson-canvas-wrap {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
