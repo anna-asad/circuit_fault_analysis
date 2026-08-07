@@ -4,7 +4,7 @@ import './SimulateButton.css';
 
 const API_URL = 'http://localhost:8000';
 
-function SimulateButton({ circuit, onSimulate, isSimulating, setIsSimulating }) {
+function SimulateButton({ circuit, onSimulate, isSimulating, setIsSimulating, simulateLabel = '▶️ Simulate' }) {
 
   const handleSimulate = async () => {
     setIsSimulating(true);
@@ -49,7 +49,7 @@ function SimulateButton({ circuit, onSimulate, isSimulating, setIsSimulating }) 
       onClick={handleSimulate}
       disabled={isSimulating}
     >
-      {isSimulating ? '⏳ Simulating...' : '▶️ Simulate'}
+      {isSimulating ? '⏳ Simulating...' : simulateLabel}
     </button>
   );
 }

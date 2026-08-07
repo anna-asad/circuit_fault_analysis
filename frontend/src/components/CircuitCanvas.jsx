@@ -734,7 +734,7 @@ function GroundNode({ data, style }) {
 }
 
 // ── Main canvas component ─────────────────────────────────────────────────────
-function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, setComponentCounters }) {
+function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, setComponentCounters, presetLoad }) {
   const isReadOnly = mode === 'results';
   const [showInstructions, setShowInstructions] = useState(true);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -1234,6 +1234,51 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       setEdges(circuit.edges);
     }
   }, [isReadOnly, circuit, setNodes, setEdges]);
+
+  // ── Load preset circuit (education simulator lessons) ───────────────────
+  useEffect(() => {
+    if (isReadOnly || !presetLoad?.loadId) return;
+
+    const enrichNode = (node) => {
+      if (node.type === 'junctionNode' || node.data?.componentType === 'junction') {
+        return node;
+      }
+      if (node.type === 'groundNode' || node.data?.componentType === 'ground') {
+        return node;
+      }
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          onEditValue:        handleEditValue,
+          onChangeDraft:      handleChangeDraft,
+          onSaveDraft:        handleSaveDraft,
+          onCancelDraft:      handleCancelDraft,
+          onResetDesignValue: handleResetDesignValue,
+          onToggleSwitch:     handleToggleSwitch,
+        },
+      };
+    };
+
+    setNodes((presetLoad.nodes ?? []).map(enrichNode));
+    setEdges(presetLoad.edges ?? []);
+    if (presetLoad.counters) {
+      setComponentCounters?.(presetLoad.counters);
+    }
+    setShowInstructions(false);
+  }, [
+    presetLoad?.loadId,
+    isReadOnly,
+    handleEditValue,
+    handleChangeDraft,
+    handleSaveDraft,
+    handleCancelDraft,
+    handleResetDesignValue,
+    handleToggleSwitch,
+    setNodes,
+    setEdges,
+    setComponentCounters,
+  ]);
 
   return (
     <div

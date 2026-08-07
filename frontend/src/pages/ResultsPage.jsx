@@ -80,7 +80,7 @@ function ComponentCard({ card }) {
 }
 
 // ── ResultsPage ───────────────────────────────────────────────────────────────
-function ResultsPage({ results, onBack, circuit }) {
+function ResultsPage({ results, onBack, circuit, educationMode = false }) {
   const [cardsOpen, setCardsOpen] = useState(true);
   const [faultsOpen, setFaultsOpen] = useState(true);
   const [mlOpen, setMlOpen] = useState(true);
@@ -167,7 +167,7 @@ function ResultsPage({ results, onBack, circuit }) {
           </div>
           {onBack && (
             <button type="button" className="results-page-back" onClick={onBack}>
-              ← Back to editor
+              ← {educationMode ? 'Back to lab' : 'Back to editor'}
             </button>
           )}
         </header>
@@ -268,6 +268,9 @@ const bulbStateMap = new Map(
     edges: circuit?.edges ?? [],
   };
 
+  const mlSectionTitle = educationMode ? "🔎 What's happening?" : '🤖 ML Classification';
+  const structuralSectionTitle = educationMode ? '🔌 Wiring check' : structuralFaultsTitle;
+  const driftSectionTitle = educationMode ? '📊 Component value changed' : '⚠ Value Drift Detected';
   const mlCardClass = !pattern_faults ? ''
     : isNormalML ? 'ml-card-page ml-card-page-normal'
     : ['model_unavailable','prediction_error','schema_mismatch'].includes(pattern_faults.fault_type)
@@ -297,17 +300,17 @@ const bulbStateMap = new Map(
             className="generate-report-btn" 
             onClick={handleGeneratePDF}
             disabled={isGeneratingPDF}
-            title="Download comprehensive fault analysis report as PDF"
+            title={educationMode ? 'Export lab notes as PDF' : 'Download comprehensive fault analysis report as PDF'}
           >
             {isGeneratingPDF ? (
-              <>📄 Generating Report...</>
+              <>📄 Generating...</>
             ) : (
-              <>📄 Generate Report</>
+              <>{educationMode ? '📄 Export lab notes' : '📄 Generate Report'}</>
             )}
           </button>
           {onBack && (
             <button type="button" className="results-page-back" onClick={onBack}>
-              ← Back to editor
+              ← {educationMode ? 'Back to lab' : 'Back to editor'}
             </button>
           )}
         </div>
@@ -362,7 +365,7 @@ const bulbStateMap = new Map(
           {success && driftWarnings.length > 0 && (
             <section className="data-section">
               <div className="data-section-header" style={{ cursor: 'default' }}>
-                <span className="data-section-title">⚠ Value Drift Detected</span>
+                <span className="data-section-title">{driftSectionTitle}</span>
               </div>
               <div className="data-section-content">
                 <ul className="fault-list-page">
@@ -387,7 +390,7 @@ const bulbStateMap = new Map(
               className="data-section-header"
               onClick={() => setFaultsOpen(v => !v)}
             >
-              <span className="data-section-title">{structuralFaultsTitle}</span>
+              <span className="data-section-title">{structuralSectionTitle}</span>
               <span className="data-section-toggle">{faultsOpen ? '▼' : '▶'}</span>
             </button>
             {faultsOpen && (
@@ -423,7 +426,7 @@ const bulbStateMap = new Map(
                 className="data-section-header"
                 onClick={() => setMlOpen(v => !v)}
               >
-                <span className="data-section-title">🤖 ML Classification</span>
+                <span className="data-section-title">{mlSectionTitle}</span>
                 <span className="data-section-toggle">{mlOpen ? '▼' : '▶'}</span>
               </button>
               {mlOpen && (
@@ -446,7 +449,7 @@ const bulbStateMap = new Map(
                 className="data-section-header"
                 onClick={() => setMlOpen(v => !v)}
               >
-                <span className="data-section-title">🤖 ML Classification</span>
+                <span className="data-section-title">{mlSectionTitle}</span>
                 <span className="data-section-toggle">{mlOpen ? '▼' : '▶'}</span>
               </button>
               {mlOpen && (

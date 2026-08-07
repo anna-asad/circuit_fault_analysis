@@ -1,0 +1,69 @@
+.diagnose-challenge {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 10px;
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.diagnose-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.diagnose-symptom {
+  font-size: 13px;
+  color: #9a3412;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.diagnose-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.diagnose-label select {
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.diagnose-submit {
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: 6px;
+  background: #ea580c;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.diagnose-submit:disabled {
+  opacity: 0.5;
+}
+
+.diagnose-result {
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.diagnose-result--ok {
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  color: #166534;
+}
+
+.diagnose-result--miss {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
