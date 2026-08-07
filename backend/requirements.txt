@@ -1,26 +1,49 @@
 # FastAPI Backend Dependencies
+# 
+# IMPORTANT: This backend requires ngspice to be installed on the system.
+# 
+# Installation:
+# - Windows: Download from http://ngspice.sourceforge.net/download.html
+# - macOS: brew install ngspice
+# - Linux: sudo apt-get install ngspice (Debian/Ubuntu)
+#          sudo yum install ngspice (RHEL/CentOS)
+#
+# The backend will automatically detect ngspice_con (Windows) or ngspice (Unix).
 
 # Web Framework
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 pydantic>=2.0.0
 
-# Data Processing (reuse from ML model)
+# CORS Support
+python-multipart>=0.0.6
+
+# Data Processing
 pandas>=2.0.0
 numpy>=1.24.0
 
-# ML Model (already in parent requirements.txt)
+# ML Model
 scikit-learn>=1.3.0
 joblib>=1.3.0
 
-# HTTP Client (for testing)
-httpx>=0.25.0
-
-# Python CORS
-python-multipart>=0.0.6
-
-# Symbolic Math
+# Symbolic Math for Circuit Analysis
 sympy>=1.12
 
-# PDF Generation
+# PDF Generation for Reports
 reportlab>=4.0.0
+
+# RAG Dependencies (optional - for AI explanations)
+# Note: These require API keys in .env file:
+# - SUPABASE_URL
+# - SUPABASE_KEY
+# - GEMINI_API_KEY
+sentence-transformers>=2.2.0
+supabase>=2.0.0
+python-dotenv>=1.0.0
+google-genai>=0.2.0
+
+# PDF Processing (for textbook ingestion)
+pypdf>=3.17.0
+
+# HTTP Client (for testing)
+httpx>=0.25.0

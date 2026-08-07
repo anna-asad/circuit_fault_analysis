@@ -132,19 +132,6 @@ export const LESSONS = [
       { type: 'action', text: 'Simulate and compare to your prediction.' },
       { type: 'verify', text: 'Dataset normal row: vo ≈ 2.99 V.' },
     ],
-    challenge: {
-      mode: 'diagnose',
-      datasetFault: 'partial_open',
-      symptom: 'Output voltage dropped — a resistor may have partially opened.',
-      answer: { component: 'R1', faultType: 'partial_open' },
-      choices: {
-        components: ['R1', 'R2'],
-        faultTypes: [
-          { id: 'partial_open', label: 'Partial Open' },
-          { id: 'partial_short', label: 'Partial Short' },
-        ],
-      },
-    },
   },
   {
     id: 'i-lab-2-series-parallel',

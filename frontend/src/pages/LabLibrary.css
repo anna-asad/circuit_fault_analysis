@@ -2,6 +2,8 @@
    variables that make h1/h2 nearly white on this light background. */
 .lab-library {
   min-height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
   color-scheme: light;
   background: linear-gradient(160deg, #f0f0e8 0%, #e8ebe4 50%, #dfe8f0 100%);
   color: #1a1a1a;

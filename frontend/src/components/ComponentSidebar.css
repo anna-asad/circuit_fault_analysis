@@ -8,6 +8,24 @@
   font-family: monospace;
 }
 
+/* Slim scrollbar styling */
+.component-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.component-sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.component-sidebar::-webkit-scrollbar-thumb {
+  background: #b0b0a8;
+  border-radius: 3px;
+}
+
+.component-sidebar::-webkit-scrollbar-thumb:hover {
+  background: #909088;
+}
+
 .component-sidebar h3 {
   font-size: 13px;
   font-weight: 700;
