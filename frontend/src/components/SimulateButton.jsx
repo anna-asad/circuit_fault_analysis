@@ -2,7 +2,7 @@ import axios from 'axios';
 import { convertCircuitToBackendFormat } from '../utils/circuitConverter';
 import './SimulateButton.css';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 function SimulateButton({ circuit, onSimulate, isSimulating, setIsSimulating, simulateLabel = '▶️ Simulate' }) {
 
