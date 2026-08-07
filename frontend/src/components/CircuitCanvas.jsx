@@ -645,7 +645,7 @@ function ComponentNode({ id, data, mode }) {
             onSave={() => data.onSaveDraft?.(id)}
             onCancel={() => data.onCancelDraft?.(id)}
             onSetDesign={() => data.onResetDesignValue?.(id)}
-            isResistor={componentType === 'resistor'}
+            isResistor={componentType === 'resistor' || componentType === 'dc_source' || componentType === 'current_source'}
           />
         ) : (
           // Meters have no user-editable value — show a read-only placeholder
