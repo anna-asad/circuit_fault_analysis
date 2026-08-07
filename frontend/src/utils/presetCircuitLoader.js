@@ -179,8 +179,25 @@ function buildBeginnerResistorBulb() {
 }
 
 function buildBeginnerParallelTwoResistors() {
-  const req = 1 / (1 / 1000 + 1 / 2000);
-  return buildCurrentSourceWithReq('I1', 0.01, 'R_eq', req);
+  const y = 200;
+  const i1 = compNode('I1', 'current_source', 0.01, { x: 60, y }, { rotation: 0 });
+  const j1 = junctionNode({ x: 200, y });
+  const r1 = compNode('R1', 'resistor', 1000, { x: 300, y: 120 });
+  const r2 = compNode('R2', 'resistor', 2000, { x: 300, y: 280 });
+  const j2 = junctionNode({ x: 420, y });
+  const gnd = compNode('GND', 'ground', 0, { x: 200, y: 320 });
+  
+  const edges = [
+    wire(i1.id, 'right', j1.id, 'left', 0),
+    wire(j1.id, 'top', r1.id, 'left', 1),
+    wire(j1.id, 'bottom', r2.id, 'left', 2),
+    wire(r1.id, 'right', j2.id, 'left', 3),
+    wire(r2.id, 'right', j2.id, 'left', 4),
+    wire(j2.id, 'right', i1.id, 'left', 5),
+    wire(gnd.id, 'top', j1.id, 'bottom', 6),
+  ];
+  
+  return { nodes: [i1, r1, r2, j1, j2, gnd], edges, counters: countCounters([i1, r1, r2]) };
 }
 
 // ── Intermediate (dataset) ────────────────────────────────────────────────────
@@ -203,15 +220,49 @@ function buildCurrentSourceSingleR() {
 function buildVdrParallelNetwork() {
   const d = dv('vdr_parallel_network');
   const s = src('vdr_parallel_network');
-  const req = 1 / (1 / d.R1 + 1 / d.R2 + 1 / d.R3);
-  return buildCurrentSourceWithReq('I1', s.I1, 'R_eq', req);
+  const y = 200;
+  const i1 = compNode('I1', 'current_source', s.I1, { x: 60, y }, { rotation: 0 });
+  const j1 = junctionNode({ x: 200, y });
+  const r1 = compNode('R1', 'resistor', d.R1, { x: 320, y: 80 });
+  const r2 = compNode('R2', 'resistor', d.R2, { x: 320, y: 200 });
+  const r3 = compNode('R3', 'resistor', d.R3, { x: 320, y: 320 });
+  const j2 = junctionNode({ x: 460, y });
+  const gnd = compNode('GND', 'ground', 0, { x: 200, y: 340 });
+  
+  const edges = [
+    wire(i1.id, 'right', j1.id, 'left', 0),
+    wire(j1.id, 'top', r1.id, 'left', 1),
+    wire(j1.id, 'right', r2.id, 'left', 2),
+    wire(j1.id, 'bottom', r3.id, 'left', 3),
+    wire(r1.id, 'right', j2.id, 'left', 4),
+    wire(r2.id, 'right', j2.id, 'left', 5),
+    wire(r3.id, 'right', j2.id, 'left', 6),
+    wire(j2.id, 'right', i1.id, 'left', 7),
+    wire(gnd.id, 'top', j1.id, 'bottom', 8),
+  ];
+  
+  return { nodes: [i1, r1, r2, r3, j1, j2, gnd], edges, counters: countCounters([i1, r1, r2, r3]) };
 }
 
 function buildCurrentSourceVoltageDivider() {
   const d = dv('current_source_voltage_divider');
   const s = src('current_source_voltage_divider');
-  const req = 1 / (1 / d.R1 + 1 / d.R2);
-  return buildCurrentSourceWithReq('I1', s.I1, 'R_eq', req);
+  const y = 200;
+  const i1 = compNode('I1', 'current_source', s.I1, { x: 60, y: 200 }, { rotation: 0 });
+  const j1 = junctionNode({ x: 200, y: 200 });
+  const r1 = compNode('R1', 'resistor', d.R1, { x: 320, y: 100 }, { rotation: 90 });
+  const r2 = compNode('R2', 'resistor', d.R2, { x: 320, y: 300 }, { rotation: 90 });
+  const gnd = compNode('GND', 'ground', 0, { x: 200, y: 340 });
+  
+  const edges = [
+    wire(i1.id, 'right', j1.id, 'left', 0),
+    wire(j1.id, 'right', r1.id, 'left', 1),
+    wire(r1.id, 'right', r2.id, 'left', 2),
+    wire(r2.id, 'right', i1.id, 'left', 3),
+    wire(gnd.id, 'top', j1.id, 'bottom', 4),
+  ];
+  
+  return { nodes: [i1, r1, r2, j1, gnd], edges, counters: countCounters([i1, r1, r2]) };
 }
 
 function buildSeriesParallelR1R2R3R4() {

@@ -3,6 +3,8 @@ import './ResultsPanel.css';
 import { buildAllCards } from '../utils/componentCards';
 import AIExplanation from './AIExplanation';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 // ── ML helpers ────────────────────────────────────────────────────────────────
 const LABEL_DISPLAY = {
   partial_short: 'Partial Short',
@@ -195,7 +197,7 @@ function ResultsPanel({ results, circuitData }) {
     
     setDownloading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/generate-report-pdf', {
+      const response = await fetch(`${API_URL}/api/generate-report-pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(circuitData),

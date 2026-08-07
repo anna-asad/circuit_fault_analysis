@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import axios from 'axios';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 function AIExplanation({ faultType, components, inline = false }) {
   const [aiExplanation, setAiExplanation] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -11,7 +13,7 @@ function AIExplanation({ faultType, components, inline = false }) {
     setError(null);
     try {
       const componentType = components?.find(c => c.type !== 'ground')?.type || 'circuit';
-      const response = await axios.post('http://localhost:8000/api/explain-fault', {
+      const response = await axios.post(`${API_URL}/api/explain-fault`, {
         fault_type: faultType || 'unknown',
         component: componentType
       });
