@@ -29,29 +29,15 @@ function LessonPlayer({ lessonId, onBack, onGoToLibrary }) {
   const [showResultsPage, setShowResultsPage] = useState(false);
   const [predictResult, setPredictResult] = useState(null);
   const [diagnoseResult, setDiagnoseResult] = useState(null);
+  const [inChallengeMode, setInChallengeMode] = useState(false);
 
   useEffect(() => {
     if (!lesson) return;
     markLessonStarted(lesson.id);
 
-    const inject = lesson.challenge?.inject ?? null;
-    let presetOptions = {};
-    if (lesson.challenge?.datasetFault && lesson.datasetCircuitId) {
-      const ds = getDatasetCircuit(lesson.datasetCircuitId);
-      const faultKey = `fault_${lesson.challenge.datasetFault}`;
-      const faultRow = ds?.[faultKey];
-      if (faultRow) {
-        presetOptions = {
-          faultValues: faultRow.component_values,
-          nominalValues: { ...ds.design_values, ...ds.sources },
-        };
-      }
-    } else if (inject) {
-      // legacy multiplier-based inject (unused in current lessons)
-      presetOptions = {};
-    }
-
-    const preset = loadPresetCircuit(lesson.circuitKey, presetOptions);
+    // Always start with normal values, not fault values
+    // Faults are only loaded when reaching the challenge phase
+    const preset = loadPresetCircuit(lesson.circuitKey, {});
     setPresetLoad(preset);
     setComponentCounters(preset.counters ?? {});
     setStepIndex(0);
@@ -59,7 +45,27 @@ function LessonPlayer({ lessonId, onBack, onGoToLibrary }) {
     setDiagnoseResult(null);
     setSimulationResults(null);
     setShowResultsPage(false);
+    setInChallengeMode(false);
   }, [lesson]);
+
+  // Load fault values when entering challenge mode
+  useEffect(() => {
+    if (!lesson || !inChallengeMode || !lesson.challenge?.datasetFault) return;
+    
+    const ds = getDatasetCircuit(lesson.datasetCircuitId);
+    const faultKey = `fault_${lesson.challenge.datasetFault}`;
+    const faultRow = ds?.[faultKey];
+    
+    if (faultRow) {
+      const presetOptions = {
+        faultValues: faultRow.component_values,
+        nominalValues: { ...ds.design_values, ...ds.sources },
+      };
+      const preset = loadPresetCircuit(lesson.circuitKey, presetOptions);
+      setPresetLoad(preset);
+      setComponentCounters(preset.counters ?? {});
+    }
+  }, [inChallengeMode, lesson]);
 
   const handleSimulateResults = useCallback((results) => {
     setSimulationResults(results);
@@ -78,6 +84,10 @@ function LessonPlayer({ lessonId, onBack, onGoToLibrary }) {
       setStepIndex((i) => i + 1);
       setPredictResult(null);
     } else if (lesson.challenge && !diagnoseResult) {
+      // Entering detective mode - load fault circuit
+      if (!inChallengeMode) {
+        setInChallengeMode(true);
+      }
       // stay on last step for challenge
     } else {
       markLessonCompleted(lesson.id);

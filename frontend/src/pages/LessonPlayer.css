@@ -4,12 +4,13 @@
   display: flex;
   flex-direction: column;
   background: #f0f0e8;
+  color: #1e293b;
 }
 
 .lesson-header {
   height: 56px;
-  background: #e0e0d8;
-  border-bottom: 1px solid #999;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
   padding: 0 16px;
   display: flex;
   align-items: center;
@@ -26,6 +27,10 @@
 .lesson-header-left h1 {
   font-size: 15px;
   font-weight: 700;
+  color: #2563eb;
+  margin: 0;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
 }
 
 .lesson-subtitle {
@@ -38,8 +43,14 @@
   border: 1px solid #94a3b8;
   border-radius: 6px;
   background: white;
+  color: #1e293b;
   cursor: pointer;
   font-size: 13px;
+}
+
+.lesson-back-btn:hover {
+  background: #f1f5f9;
+  border-color: #64748b;
 }
 
 .lesson-header-right {
@@ -74,6 +85,25 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  color: #1e293b;
+}
+
+/* Slim scrollbar styling */
+.lesson-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lesson-sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lesson-sidebar::-webkit-scrollbar-thumb {
+  background: #c0c0b8;
+  border-radius: 3px;
+}
+
+.lesson-sidebar::-webkit-scrollbar-thumb:hover {
+  background: #a0a098;
 }
 
 .lesson-panel {
@@ -81,6 +111,7 @@
   border: 1px solid #d4d4cc;
   border-radius: 8px;
   padding: 12px;
+  color: #1e293b;
 }
 
 .lesson-panel h3 {
@@ -109,11 +140,13 @@
   border-radius: 6px;
   margin-bottom: 4px;
   font-size: 12px;
+  color: #334155;
 }
 
 .lesson-step-list li.active {
   background: #e0e7ff;
   border-left: 3px solid #4f46e5;
+  color: #1e293b;
 }
 
 .lesson-step-list li.done {
@@ -132,12 +165,14 @@
   display: block;
   margin-top: 2px;
   line-height: 1.3;
+  color: inherit;
 }
 
 .lesson-current-step p {
   font-size: 14px;
   line-height: 1.5;
   margin-bottom: 8px;
+  color: #1e293b;
 }
 
 .lesson-step-nav {
@@ -149,11 +184,18 @@
 .lesson-step-nav button {
   flex: 1;
   padding: 8px;
-  border: 1px solid #cbd5e1;
+  border: 2px solid #3b82f6;
   border-radius: 6px;
-  background: white;
+  background: #3b82f6;
+  color: #ffffff;
   cursor: pointer;
   font-size: 13px;
+  font-weight: 600;
+}
+
+.lesson-step-nav button:hover:not(:disabled) {
+  background: #2563eb;
+  border-color: #2563eb;
 }
 
 .lesson-step-nav button:disabled {
@@ -169,6 +211,10 @@
   color: white;
   font-weight: 600;
   cursor: pointer;
+}
+
+.lesson-complete-btn:hover {
+  background: #166534;
 }
 
 .lesson-canvas-area {

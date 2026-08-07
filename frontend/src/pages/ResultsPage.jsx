@@ -5,6 +5,8 @@ import { buildAllCards } from '../utils/componentCards';
 import AIExplanation from '../components/AIExplanation';
 import html2canvas from 'html2canvas';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 const STRUCTURAL_STATUS_RULES = [
   { pattern: /short circuit/i, title: 'Short Circuit' },
   { pattern: /open circuit/i, title: 'Open Circuit' },
@@ -124,7 +126,7 @@ function ResultsPage({ results, onBack, circuit, educationMode = false }) {
       
       console.log('Sending PDF report request with circuit image...');
       
-      const response = await fetch('http://localhost:8000/api/generate-report-pdf', {
+      const response = await fetch(`${API_URL}/api/generate-report-pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(backendCircuit)

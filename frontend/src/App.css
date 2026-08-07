@@ -28,16 +28,20 @@
   align-items: center;
   gap: 12px;
 }
-
 .app-library-btn {
   padding: 6px 12px;
   border: 1px solid #94a3b8;
   border-radius: 6px;
   background: white;
+  color: #1e293b;
   cursor: pointer;
   font-size: 13px;
 }
 
+.app-library-btn:hover {
+  background: #f1f5f9;
+  border-color: #64748b;
+}
 .app-header h1 {
   font-size: 16px;
   color: #1a1a1a;

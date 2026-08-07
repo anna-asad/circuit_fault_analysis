@@ -407,26 +407,26 @@ function pickClosestHandle(candidateIds, anchor, centerX, centerY, jWidth, jHeig
 // ── Value formatting ──────────────────────────────────────────────────────────
 function formatValue(value, type) {
   if (type === 'resistor') {
-    return value >= 1000 ? `${value / 1000}kΩ` : `${value}Ω`;
+    return value >= 1000 ? `${(value / 1000).toFixed(2)}kΩ` : `${value.toFixed(2)}Ω`;
   }
   if (type === 'capacitor') {
-    if (value >= 1e-6) return `${value * 1e6}µF`;
-    if (value >= 1e-9) return `${value * 1e9}nF`;
-    return `${value * 1e12}pF`;
+    if (value >= 1e-6) return `${(value * 1e6).toFixed(2)}µF`;
+    if (value >= 1e-9) return `${(value * 1e9).toFixed(2)}nF`;
+    return `${(value * 1e12).toFixed(2)}pF`;
   }
   if (type === 'inductor') {
-    if (value >= 1e-3) return `${value * 1e3}mH`;
-    if (value >= 1e-6) return `${value * 1e6}µH`;
-    return `${value * 1e9}nH`;
+    if (value >= 1e-3) return `${(value * 1e3).toFixed(2)}mH`;
+    if (value >= 1e-6) return `${(value * 1e6).toFixed(2)}µH`;
+    return `${(value * 1e9).toFixed(2)}nH`;
   }
   if (type === 'current_source') {
-    if (value >= 1) return `${value}A`;
-    if (value >= 1e-3) return `${value * 1e3}mA`;
-    if (value >= 1e-6) return `${value * 1e6}µA`;
-    return `${value * 1e9}nA`;
+    if (value >= 1) return `${value.toFixed(2)}A`;
+    if (value >= 1e-3) return `${(value * 1e3).toFixed(2)}mA`;
+    if (value >= 1e-6) return `${(value * 1e6).toFixed(2)}µA`;
+    return `${(value * 1e9).toFixed(2)}nA`;
   }
   if (type === 'bulb') {
-    return value >= 1000 ? `${value / 1000}kΩ` : `${value}Ω`;
+    return value >= 1000 ? `${(value / 1000).toFixed(2)}kΩ` : `${value.toFixed(2)}Ω`;
   }
   return value;
 }
