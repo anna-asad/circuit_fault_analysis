@@ -28,4 +28,8 @@ COPY backend/ .
 # this path needs adjusting — see note below before deploying.
 COPY models/ /models
 
-CMD uvicorn main:app --host 0.0.0.0 --port $PORT
+# Back4App requires an explicit exposed port (unlike Render's dynamic $PORT env var),
+# so we fix it at 8000 and expose it here.
+EXPOSE 8000
+
+CMD uvicorn main:app --host 0.0.0.0 --port 8000
