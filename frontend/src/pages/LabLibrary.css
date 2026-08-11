@@ -1,12 +1,9 @@
-/* Force light theme inside the lab library — global :root uses dark-mode
-   variables that make h1/h2 nearly white on this light background. */
 .lab-library {
   min-height: 100vh;
   max-height: 100vh;
   overflow-y: auto;
-  color-scheme: light;
-  background: linear-gradient(160deg, #f0f0e8 0%, #e8ebe4 50%, #dfe8f0 100%);
-  color: #1a1a1a;
+  background: #0a0e1a;
+  color: #e2e8f0;
 }
 
 .lab-library-header {
@@ -15,8 +12,8 @@
   justify-content: space-between;
   gap: 24px;
   padding: 32px 40px 24px;
-  border-bottom: 1px solid #c8c8c0;
-  background: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid #2d3748;
+  background: #1a1f2e;
 }
 
 .lab-library-title {
@@ -24,13 +21,13 @@
   font-weight: 800;
   font-family: system-ui, sans-serif;
   margin: 0 0 8px;
-  color: #111827;
+  color: #00d9ff;
   letter-spacing: -0.02em;
 }
 
 .lab-library-tagline {
   font-size: 15px;
-  color: #374151;
+  color: #94a3b8;
   max-width: 520px;
   line-height: 1.5;
   margin: 0;
@@ -38,17 +35,17 @@
 
 .lab-free-play-btn {
   padding: 10px 18px;
-  border: 2px solid #2c5282;
+  border: 2px solid #00d9ff;
   border-radius: 8px;
-  background: white;
-  color: #2c5282;
+  background: transparent;
+  color: #00d9ff;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .lab-free-play-btn:hover {
-  background: #ebf4ff;
+  background: rgba(0, 217, 255, 0.1);
 }
 
 .lab-library-body {
@@ -64,28 +61,28 @@
   font-size: 20px;
   font-weight: 700;
   margin: 0 0 4px;
-  color: #111827;
+  color: #00d9ff;
 }
 
 .lab-module-desc {
-  color: #4b5563;
+  color: #94a3b8;
   font-size: 14px;
   margin: 0 0 16px;
 }
 
 .lab-coming-soon {
-  background: #f8fafc;
-  border: 2px dashed #cbd5e1;
+  background: #1a1f2e;
+  border: 2px dashed #2d3748;
   border-radius: 12px;
   padding: 28px;
   text-align: center;
-  color: #334155;
+  color: #64748b;
 }
 
 .lab-coming-soon p {
   margin: 0 0 6px;
   font-weight: 600;
-  color: #1e293b;
+  color: #e2e8f0;
 }
 
 .lab-coming-soon-detail {
@@ -101,19 +98,19 @@
 }
 
 .lab-card {
-  background: white;
-  border: 1px solid #d4d4cc;
+  background: #1a1f2e;
+  border: 1px solid #2d3748;
   border-radius: 12px;
   padding: 18px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  color: #1f2937;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  color: #e2e8f0;
 }
 
 .lab-card--completed {
-  border-color: #86efac;
+  border-color: #10b981;
 }
 
 .lab-card-top {
@@ -131,13 +128,13 @@
   border-radius: 999px;
 }
 
-.lab-status--not_started { background: #f1f5f9; color: #475569; }
-.lab-status--in_progress { background: #fef3c7; color: #b45309; }
-.lab-status--completed   { background: #dcfce7; color: #15803d; }
+.lab-status--not_started { background: #2d3748; color: #94a3b8; }
+.lab-status--in_progress { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+.lab-status--completed   { background: rgba(16, 185, 129, 0.2); color: #10b981; }
 
 .lab-duration {
   font-size: 12px;
-  color: #6b7280;
+  color: #64748b;
 }
 
 .lab-card-title {
@@ -145,18 +142,18 @@
   font-weight: 700;
   line-height: 1.3;
   margin: 0;
-  color: #111827;
+  color: #e2e8f0;
 }
 
 .lab-card-subtitle {
   font-size: 13px;
-  color: #4b5563;
+  color: #94a3b8;
   margin: 0;
 }
 
 .lab-card-ref {
   font-size: 12px;
-  color: #6d28d9;
+  color: #00d9ff;
   font-weight: 600;
   margin: 0;
 }
@@ -175,18 +172,18 @@
 }
 
 .lab-difficulty {
-  background: #e0e7ff;
-  color: #3730a3;
+  background: rgba(0, 217, 255, 0.15);
+  color: #00d9ff;
 }
 
 .lab-challenge-badge {
-  background: #fce7f3;
-  color: #9d174d;
+  background: rgba(251, 113, 133, 0.15);
+  color: #fb7185;
 }
 
 .lab-objectives {
   font-size: 12px;
-  color: #374151;
+  color: #94a3b8;
   padding-left: 18px;
   margin: 4px 0;
   flex: 1;
@@ -201,12 +198,12 @@
   padding: 10px;
   border: none;
   border-radius: 8px;
-  background: #2c5282;
-  color: #ffffff;
+  background: #00d9ff;
+  color: #0a0e1a;
   font-weight: 600;
   cursor: pointer;
 }
 
 .lab-start-btn:hover {
-  background: #2a4365;
+  background: #00c4e6;
 }

@@ -1,6 +1,6 @@
-/* ── Canvas background (LTSpice yellowish off-white) ─────────────────────── */
+/* ── Canvas background (Dark theme) ─────────────────────── */
 .react-flow__renderer {
-  background: #f0f0e8;
+  background: #0a0e1a;
 }
 
 .canvas-instructions {
@@ -8,33 +8,34 @@
   top: 10px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(26, 31, 46, 0.95);
   padding: 7px 16px;
   border-radius: 5px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   font-size: 12px;
-  color: #444;
+  color: #e2e8f0;
   z-index: 10;
   max-width: 90%;
   text-align: center;
-  border: 1px solid #ccc;
+  border: 1px solid #2d3748;
   font-family: monospace;
   white-space: nowrap;
 }
 
 .canvas-instructions kbd {
-  background: #e8e8e0;
-  border: 1px solid #aaa;
+  background: #2d3748;
+  border: 1px solid #475569;
   border-radius: 3px;
   padding: 1px 5px;
   font-size: 11px;
   font-family: monospace;
+  color: #00d9ff;
 }
 
 /* ── Wire / edge styling ────────────────────────────────────────────────── */
 .react-flow__edge-path {
   stroke-linecap: square !important;
-  stroke: #c049f3d2 !important;
+  stroke: #00d9ff !important;
   stroke-linejoin: miter !important;
 }
 
@@ -46,7 +47,7 @@
 .react-flow__node.selected > .circuit-node-component,
 .react-flow__node.selected > .circuit-node-junction,
 .react-flow__node.selected > .circuit-node-ground {
-  outline: 2px solid #e554a6;
+  outline: 2px solid #00d9ff;
   outline-offset: 2px;
 }
 /* ReactFlow wraps nodes in an extra div; target the selection highlight via box-shadow */
@@ -55,7 +56,7 @@
 }
 
 .react-flow__edge.selected .react-flow__edge-path {
-  stroke: #5f06a8 !important;
+  stroke: #00c4e6 !important;
   stroke-width: 2.5px !important;
 }
 
@@ -97,7 +98,7 @@
   font-size: 10px;
   font-weight: 700;
   font-family: monospace;
-  color: #1a1a1a;
+  color: #94a3b8;
   line-height: 1;
   text-align: center;
   letter-spacing: 0.03em;
@@ -126,7 +127,7 @@
   width: 100%;
   height: auto;
   max-height: 32px;
-  color: #1caeed;
+  color: #94a3b8;
 }
 
 /* Bulb SVG overrides - the bulb node uses its own fill/stroke colors */
@@ -163,7 +164,7 @@
   font-family: monospace;
   font-size: 10px;
   font-weight: 700;
-  color: #0055aa;       /* LTSpice blue for values */
+  color: #00d9ff;
   cursor: pointer;
   padding: 0;
   text-decoration: none;
@@ -178,7 +179,7 @@
 
 .value-button:hover {
   text-decoration: underline;
-  color: #003888;
+  color: #00c4e6;
 }
 
 /* ── Junction node ───────────────────────────────────────────────────────── */
@@ -187,7 +188,7 @@
   height: 10px;
   padding: 0;
   border-radius: 50%;
-  background: #1a1a1a;
+  background: #00d9ff;
   border: none;
 }
 
@@ -195,7 +196,7 @@
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: #1a1a1a;
+  background: #00d9ff;
 }
 
 /* ── Ground node ─────────────────────────────────────────────────────────── */
@@ -216,15 +217,15 @@
   height: 36px;
   display: block;
   overflow: visible;
-  color: #16a34a;   /* ground color */
+  color: #94a3b8;
 }
 
 /* ── Connection handles ──────────────────────────────────────────────────── */
 .circuit-handle {
   width: 9px !important;
   height: 9px !important;
-  border: 1.5px solid #f0f0e8 !important;
-  background: #1a6ab5 !important;
+  border: 1.5px solid #0a0e1a !important;
+  background: #00d9ff !important;
   opacity: 0.75 !important;
   z-index: 5 !important;
   transition: opacity 0.15s, transform 0.15s !important;
@@ -233,7 +234,7 @@
 
 .circuit-handle:hover {
   opacity: 1 !important;
-  background: #0d4f9e !important;
+  background: #00c4e6 !important;
   transform: scale(1.35) !important;
 }
 
@@ -269,20 +270,20 @@
   max-width: 70px;
   min-width: 45px;
   padding: 3px 6px;
-  border: 1px solid #666;
+  border: 1px solid #2d3748;
   border-radius: 3px;
   font-size: 10px;
   font-family: monospace;
-  background: #fffff0;
-  color: #1a1a1a;
+  background: #1a1f2e;
+  color: #e2e8f0;
   outline: none;
   text-align: center;
   box-sizing: border-box;
 }
 
 .value-editor-input:focus {
-  border-color: #1a6ab5;
-  box-shadow: 0 0 0 2px rgba(26, 106, 181, 0.2);
+  border-color: #00d9ff;
+  box-shadow: 0 0 0 2px rgba(0, 217, 255, 0.2);
 }
 
 .value-editor-actions {
@@ -292,7 +293,7 @@
 
 .value-editor-btn {
   padding: 2px 7px;
-  border: 1px solid #888;
+  border: 1px solid #2d3748;
   border-radius: 3px;
   cursor: pointer;
   font-size: 11px;
@@ -302,14 +303,14 @@
 
 .value-editor-btn:first-child {
   /* Tick/Save button - green */
-  background: #22c55e;
-  border-color: #16a34a;
-  color: white;
+  background: #10b981;
+  border-color: #059669;
+  color: #0a0e1a;
 }
 
 .value-editor-btn:first-child:hover {
-  background: #16a34a;
-  border-color: #15803d;
+  background: #059669;
+  border-color: #047857;
 }
 
 .value-editor-btn:last-child {
@@ -326,7 +327,7 @@
 
 .value-editor-error {
   font-size: 10px;
-  color: #cc0000;
+  color: #ef4444;
   font-family: monospace;
 }
 
@@ -339,6 +340,7 @@
   pointer-events: none;
   user-select: none;
   line-height: 1;
+  color: #64748b;
 }
 
 /* ── Set as Design Value button ─────────────────────────────────────────── */
@@ -349,15 +351,15 @@
   gap: 3px;
   margin-top: 6px;
   padding-top: 6px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid #2d3748;
   width: 100%;
 }
 
 .value-editor-btn-design {
   appearance: none;
-  border: 1.5px solid #6366f1;
+  border: 1.5px solid #00d9ff;
   background: transparent;
-  color: #6366f1;
+  color: #00d9ff;
   font-size: 6px;
   font-weight: 600;
   font-family: monospace;
@@ -369,13 +371,13 @@
 }
 
 .value-editor-btn-design:hover {
-  background: #6366f1;
-  color: #ffffff;
+  background: #00d9ff;
+  color: #0a0e1a;
 }
 
 .value-editor-design-hint {
   font-size: 4px;
-  color: #61656b;
+  color: #64748b;
   font-style: italic;
   margin: 0;
   text-align: center;

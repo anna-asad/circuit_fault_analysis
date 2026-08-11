@@ -32,6 +32,9 @@ sympy>=1.12
 # PDF Generation for Reports
 reportlab>=4.0.0
 
+# Payment Processing
+stripe>=7.0.0
+
 # RAG Dependencies (optional - for AI explanations)
 # Note: These require API keys in .env file:
 # - SUPABASE_URL
