@@ -13,6 +13,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import './CircuitCanvas.css';
 
+
 // ── SVG symbols ───────────────────────────────────────────────────────────────
 const COMPONENT_SVGS = {
   resistor: (
@@ -107,7 +108,9 @@ const COMPONENT_SVGS = {
   ),
 };
 
+
 let _bulbIdCounter = 0;
+
 
 function renderComponentGraphic(componentType, state) {
   if (componentType === 'bulb') {
@@ -148,12 +151,15 @@ function renderComponentGraphic(componentType, state) {
     );
   }
 
+
   if (componentType === 'switch') {
     return state === 'closed' ? COMPONENT_SVGS.switch_closed : COMPONENT_SVGS.switch_open;
   }
 
+
   return COMPONENT_SVGS[componentType] ?? COMPONENT_SVGS.resistor;
 }
+
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const DEFAULT_VALUES = {
@@ -168,6 +174,7 @@ const DEFAULT_VALUES = {
   switch: 0,     // state-based, no numeric value
   bulb: 240,     // typical bulb resistance in ohms
 };
+
 
 const NODE_STYLES = {
   base: {
@@ -261,6 +268,7 @@ const NODE_STYLES = {
   },
 };
 
+
 // ── Rotation helpers ─────────────────
 const ROTATION_TO_POSITIONS = {
     0: { left: Position.Left,   right: Position.Right },
@@ -269,12 +277,15 @@ const ROTATION_TO_POSITIONS = {
   270: { left: Position.Bottom, right: Position.Top },
 };
 
+
 function getHandlePositions(rotation = 0) {
   return ROTATION_TO_POSITIONS[((rotation % 360) + 360) % 360] ?? ROTATION_TO_POSITIONS[0];
 }
 
+
 // ── Wire-splitting geometry helpers ───────────────────────────────────────────
 // Shared by onConnectEnd so handle positions match rendered nodes (including rotation).
+
 
 function parseDim(value) {
   if (typeof value === 'number') return value;
@@ -282,13 +293,16 @@ function parseDim(value) {
   return null;
 }
 
+
 function getComponentRotation(node) {
   return node?.data?.rotation ?? 0;
 }
 
+
 function getNodeSize(node) {
   const ct = node?.data?.componentType;
   const st = node?.data?.style || node?.style || {};
+
 
   if (ct === 'junction') {
     const junctionStyle = { ...NODE_STYLES.junction, ...st };
@@ -298,6 +312,7 @@ function getNodeSize(node) {
     };
   }
 
+
   if (ct === 'ground') {
     const groundStyle = { ...NODE_STYLES.ground, ...st };
     return {
@@ -306,25 +321,30 @@ function getNodeSize(node) {
     };
   }
 
+
   if (node?.width && node?.height) {
     return { w: node.width, h: node.height };
   }
+
 
   const rotation = getComponentRotation(node);
   const isVertical = ct === 'current_source'
     ? (rotation === 0 || rotation === 180)
     : (rotation === 90 || rotation === 270);
 
+
   const baseStyle = { ...NODE_STYLES.base, ...st };
   const nativeW = parseDim(baseStyle.minWidth) || parseDim(baseStyle.width) || 80;
   const nativeH = parseDim(baseStyle.minHeight) || parseDim(baseStyle.height)
     || (ct === 'current_source' ? 90 : 52);
+
 
   return {
     w: isVertical ? nativeW : nativeH,
     h: isVertical ? nativeH : nativeW,
   };
 }
+
 
 function positionToCoords(position, nx, ny, w, h) {
   switch (position) {
@@ -336,10 +356,12 @@ function positionToCoords(position, nx, ny, w, h) {
   }
 }
 
+
 function getHandleIdToPosition(node, handleId) {
   const ct = node?.data?.componentType;
   const rotation = getComponentRotation(node);
   const normalizedRotation = ((rotation % 360) + 360) % 360;
+
 
   if (ct === 'junction' || ct === 'ground') {
     const map = {
@@ -350,6 +372,7 @@ function getHandleIdToPosition(node, handleId) {
     };
     return map[handleId] ?? Position.Top;
   }
+
 
   if (ct === 'current_source') {
     const currentSourcePositions = {
@@ -362,9 +385,11 @@ function getHandleIdToPosition(node, handleId) {
     return handleId === 'right' ? positions.right : positions.left;
   }
 
+
   const { left, right } = getHandlePositions(normalizedRotation);
   return handleId === 'right' ? right : left;
 }
+
 
 function getHandlePos(node, handleId) {
   const nx = node.positionAbsolute?.x ?? node.position.x;
@@ -373,6 +398,7 @@ function getHandlePos(node, handleId) {
   const position = getHandleIdToPosition(node, handleId);
   return positionToCoords(position, nx, ny, w, h);
 }
+
 
 /** Center (jx, jy) and size — compute a junction handle's flow position before render. */
 function getJunctionHandlePos(centerX, centerY, jWidth, jHeight, handleId) {
@@ -385,10 +411,12 @@ function getJunctionHandlePos(centerX, centerY, jWidth, jHeight, handleId) {
   return positionToCoords(position, nx, ny, jWidth, jHeight);
 }
 
+
 /** Classify wire as horizontal or vertical from endpoint handle positions. */
 function isWireHorizontal(srcPos, tgtPos) {
   return Math.abs(tgtPos.x - srcPos.x) >= Math.abs(tgtPos.y - srcPos.y);
 }
+
 
 function pickClosestHandle(candidateIds, anchor, centerX, centerY, jWidth, jHeight) {
   let bestId = candidateIds[0];
@@ -403,6 +431,7 @@ function pickClosestHandle(candidateIds, anchor, centerX, centerY, jWidth, jHeig
   });
   return bestId;
 }
+
 
 // ── Value formatting ──────────────────────────────────────────────────────────
 function formatValue(value, type) {
@@ -431,6 +460,7 @@ function formatValue(value, type) {
   return value;
 }
 
+
 function formatNodeValue(type, value, state) {
   if (type === 'dc_source') return `${value}V`;
   if (type === 'current_source') return formatValue(value, type);
@@ -440,6 +470,7 @@ function formatNodeValue(type, value, state) {
   if (type === 'bulb')      return 'Bulb';
   return formatValue(value, type);
 }
+
 
 function getNodeStyle(type) {
   if (type === 'junction')      return NODE_STYLES.junction;
@@ -452,6 +483,7 @@ function getNodeStyle(type) {
   if (type === 'current_source') return { ...NODE_STYLES.base, minWidth: '60px', minHeight: '90px' };
   return NODE_STYLES.base;
 }
+
 
 // ── ValueEditor ───────────────────────────────────────────────────
 function ValueEditor({ valueDraft, error, onChange, onSave, onCancel, onSetDesign, isResistor }) {
@@ -495,9 +527,11 @@ function ValueEditor({ valueDraft, error, onChange, onSave, onCancel, onSetDesig
   );
 }
 
+
 // ── NodeTerminals ─────────────────────────────────────────────────────────────
 function NodeTerminals({ rotation = 0, componentType }) {
   const normalizedRotation = ((rotation % 360) + 360) % 360;
+
 
   if (componentType === 'current_source'|| componentType === 'currentSource') {
     const currentSourcePositions = {
@@ -507,6 +541,7 @@ function NodeTerminals({ rotation = 0, componentType }) {
       270: { left: Position.Left, right: Position.Right },
     };
     const positions = currentSourcePositions[normalizedRotation] ?? currentSourcePositions[0];
+
 
     return (
       <>
@@ -519,7 +554,7 @@ function NodeTerminals({ rotation = 0, componentType }) {
         />
         <Handle
           key={`${componentType}-${normalizedRotation}-right`}
-          type="source" 
+          type="source"
           position={positions.right}
           id="right"
           className="circuit-handle"
@@ -527,6 +562,7 @@ function NodeTerminals({ rotation = 0, componentType }) {
       </>
     );
   }
+
 
   const { left, right } = getHandlePositions(normalizedRotation);
   return (
@@ -549,11 +585,12 @@ function NodeTerminals({ rotation = 0, componentType }) {
   );
 }
 
+
 // ── ComponentNode ─────────────────────────────────────────────────────────────
 function ComponentNode({ id, data, mode }) {
   const rotation = data.rotation ?? 0;
   const updateNodeInternals = useUpdateNodeInternals();
-  
+ 
   // Update React Flow internals when rotation changes (after render commits)
   // Skip the initial render by using useRef to track if it's the first mount
   const isFirstRender = useRef(true);
@@ -565,7 +602,7 @@ function ComponentNode({ id, data, mode }) {
     // Rotation has changed - notify React Flow to recalculate handle positions
     updateNodeInternals(id);
   }, [rotation, id, updateNodeInternals]);
-  
+ 
   // For current_source the native orientation is vertical (SVG viewBox is portrait).
   // isVertical = true  → component is in its natural portrait orientation (0°/180°)
   // isVertical = false → component has been rotated to landscape (90°/270°)
@@ -573,6 +610,7 @@ function ComponentNode({ id, data, mode }) {
   const isVertical = data.componentType === 'current_source'
     ? (rotation === 0 || rotation === 180)
     : (rotation === 90 || rotation === 270);
+
 
   // Box dimensions: always make the longer side match the component's lead axis.
   // current_source native: minWidth='60px' (narrow), minHeight='90px' (tall).
@@ -588,6 +626,7 @@ function ComponentNode({ id, data, mode }) {
     minHeight: undefined,
   };
 
+
   // Visual container also swaps dimensions to properly contain rotated SVG
   const visualContainerStyle = {
     transform: `rotate(${rotation}deg)`,
@@ -597,9 +636,11 @@ function ComponentNode({ id, data, mode }) {
     height: isVertical ? '100%' : '32px',
   };
 
+
   // Apply compact styling for vertical orientation
   const valueButtonStyle = isVertical ? { fontSize: '9px', maxWidth: '100%' } : {};
   const labelStyle = isVertical ? { fontSize: '9px', maxWidth: '100%' } : {};
+
 
   if (mode === 'results') {
     return (
@@ -618,7 +659,9 @@ function ComponentNode({ id, data, mode }) {
     );
   }
 
+
   const { isEditing, valueDraft, valueError, componentType, value, label } = data;
+
 
   return (
     <div className="circuit-node circuit-node-component" style={nodeStyle}>
@@ -630,7 +673,7 @@ function ComponentNode({ id, data, mode }) {
           {/* SVG symbol rotates; container becomes portrait box at 90°/270° */}
           <div className="component-visual-container" style={visualContainerStyle}>
             <div className="component-svg-fallback visible">
-              {componentType === 'switch' 
+              {componentType === 'switch'
                 ? (data.state === 'closed' ? COMPONENT_SVGS.switch_closed : COMPONENT_SVGS.switch_open)
                 : COMPONENT_SVGS[componentType]
               }
@@ -689,6 +732,7 @@ function ComponentNode({ id, data, mode }) {
   );
 }
 
+
 // ── JunctionNode / GroundNode ─────────────────────────────────────────────────
 function JunctionNode({ data, style }) {
   // Allow explicit handle position overrides from data.handlePositions
@@ -699,7 +743,7 @@ function JunctionNode({ data, style }) {
     top: Position.Top,
     bottom: Position.Bottom,
   };
-  
+ 
   return (
     <div className="circuit-node circuit-node-junction" style={data?.style || style}>
       <Handle type="source" position={handlePositions.left}   id="left"   className="circuit-handle" />
@@ -710,6 +754,7 @@ function JunctionNode({ data, style }) {
     </div>
   );
 }
+
 
 // ── GroundNode ─────────────────────────────────────────────────────────────
 function GroundNode({ data, style }) {
@@ -733,6 +778,7 @@ function GroundNode({ data, style }) {
   );
 }
 
+
 // ── Main canvas component ─────────────────────────────────────────────────────
 function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, setComponentCounters, presetLoad }) {
   const isReadOnly = mode === 'results';
@@ -740,6 +786,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const reactFlowRef = useRef(null);
+
 
   // ── Value editing callbacks ───────────────────────────────────────────────
   const handleEditValue = useCallback((nodeId) => {
@@ -760,6 +807,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
     );
   }, [setNodes]);
 
+
   const handleChangeDraft = useCallback((nodeId, raw) => {
     setNodes((nds) =>
       nds.map((n) =>
@@ -769,6 +817,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       )
     );
   }, [setNodes]);
+
 
   const handleSaveDraft = useCallback((nodeId) => {
     setNodes((nds) =>
@@ -793,6 +842,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
     );
   }, [setNodes]);
 
+
   const handleCancelDraft = useCallback((nodeId) => {
     setNodes((nds) =>
       nds.map((n) =>
@@ -802,6 +852,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       )
     );
   }, [setNodes]);
+
 
   const handleResetDesignValue = useCallback((nodeId) => {
     setNodes((nds) =>
@@ -826,6 +877,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
     );
   }, [setNodes]);
 
+
   const handleToggleSwitch = useCallback((nodeId) => {
     setNodes((nds) =>
       nds.map((n) =>
@@ -842,8 +894,10 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
     );
   }, [setNodes]);
 
+
   const WIRE_COLOR        = '#1a1a1a';
   const GROUND_WIRE_COLOR = '#16a34a'; // green — ground connections
+
 
   // ── Wire connection ───────────────────────────────────────────────────────
   const onConnect = useCallback(
@@ -869,11 +923,13 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
     [setEdges, nodes]
   );
 
+
   // ── Handle ground connecting to edges (wires) ────────────────────────────
   const onConnectStart = useCallback((event, { nodeId, handleId }) => {
     window.connectionStart   = { nodeId, handleId };
     window.connectionHandled = false; // reset for this drag gesture
   }, []);
+
 
   // ── onConnectEnd: auto-junction when a wire is dropped onto another wire ──
   //
@@ -897,15 +953,19 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         return;
       }
 
+
       const instance = reactFlowRef.current;
       if (!instance || !window.connectionStart) return;
+
 
       const { nodeId: startNodeId, handleId: startHandleId } = window.connectionStart;
       const startNode = nodes.find(n => n.id === startNodeId);
       if (!startNode) { window.connectionStart = null; return; }
 
+
       const { clientX, clientY } = event;
       const position = instance.screenToFlowPosition({ x: clientX, y: clientY });
+
 
       // ── Find the nearest wire to the drop point ───────────────────────────
       const THRESHOLD = 80;
@@ -913,15 +973,19 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       let minDistance  = Infinity;
       let nearestPoint = null;
 
+
       edges.forEach(edge => {
         if (edge.source === startNodeId || edge.target === startNodeId) return;
+
 
         const srcNode = nodes.find(n => n.id === edge.source);
         const tgtNode = nodes.find(n => n.id === edge.target);
         if (!srcNode || !tgtNode) return;
 
+
         const srcPos = getHandlePos(srcNode, edge.sourceHandle);
         const tgtPos = getHandlePos(tgtNode, edge.targetHandle);
+
 
         const dx = tgtPos.x - srcPos.x;
         const dy = tgtPos.y - srcPos.y;
@@ -934,6 +998,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         const cy = srcPos.y + t * dy;
         const dist = Math.hypot(position.x - cx, position.y - cy);
 
+
         if (dist < THRESHOLD && dist < minDistance) {
           minDistance  = dist;
           nearestEdge  = edge;
@@ -941,11 +1006,13 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         }
       });
 
+
       if (!nearestEdge) {
         window.connectionStart   = null;
         window.connectionHandled = false;
         return;
       }
+
 
       const srcNode = nodes.find(n => n.id === nearestEdge.source);
       const tgtNode = nodes.find(n => n.id === nearestEdge.target);
@@ -953,8 +1020,10 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       const tgtPos  = getHandlePos(tgtNode, nearestEdge.targetHandle);
       const horizontal = isWireHorizontal(srcPos, tgtPos);
 
+
       const SNAP = 10;
       const { w: jWidth, h: jHeight } = getNodeSize({ data: { componentType: 'junction' }, style: NODE_STYLES.junction });
+
 
       // Snap only the axis perpendicular to the wire so the junction stays on-line.
       const jx = horizontal
@@ -964,18 +1033,22 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         ? nearestPoint.y
         : Math.round(nearestPoint.y / SNAP) * SNAP;
 
+
       const junctionId = `junction_auto_${Date.now()}`;
       const isGroundNode = startNode?.data?.componentType === 'ground';
       const WIRE_STYLE     = { stroke: WIRE_COLOR,        strokeWidth: 2 };
       const GND_WIRE_STYLE = { stroke: GROUND_WIRE_COLOR, strokeWidth: 2 };
       const WIRE_OPTS      = { pathOptions: { borderRadius: 0 } };
 
+
       const connectingHandle = startHandleId ?? 'left';
       const connectingAnchor = getHandlePos(startNode, connectingHandle);
+
 
       // Through handles follow the original wire axis; branch uses the perpendicular pair.
       const throughHandles = horizontal ? ['left', 'right'] : ['top', 'bottom'];
       const branchCandidates = horizontal ? ['top', 'bottom'] : ['left', 'right'];
+
 
       const junctionToSrcHandle = horizontal
         ? (srcPos.x < jx ? throughHandles[0] : throughHandles[1])
@@ -983,6 +1056,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       const junctionToTgtHandle = junctionToSrcHandle === throughHandles[0]
         ? throughHandles[1]
         : throughHandles[0];
+
 
       const connectingJunctionHandle = pickClosestHandle(
         branchCandidates,
@@ -992,6 +1066,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         jWidth,
         jHeight
       );
+
 
       // Build explicit handle position map to prevent zigzags.
       // Through-handles (continuing the original wire) must align with wire orientation.
@@ -1011,6 +1086,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         junctionHandlePositions.right = Position.Right;
       }
 
+
       setNodes(nds => [
         ...nds,
         {
@@ -1028,10 +1104,12 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         },
       ]);
 
+
       setEdges(eds => {
         const filtered = eds.filter(e => e.id !== nearestEdge.id);
         const originalStyle = nearestEdge.style || WIRE_STYLE;
         const originalType = nearestEdge.type || 'smoothstep';
+
 
         return [
           ...filtered,
@@ -1068,11 +1146,13 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         ];
       });
 
+
       window.connectionStart   = null;
       window.connectionHandled = false;
     },
     [nodes, edges, setNodes, setEdges]
   );
+
 
   // ── Drop from sidebar ─────────────────────────────────────────────────────
   const onDrop = useCallback(
@@ -1080,20 +1160,24 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       event.preventDefault();
       setShowInstructions(false);
 
+
       const instance = reactFlowRef.current;
       if (!instance) return;
 
+
       const type = event.dataTransfer.getData('application/reactflow');
       if (!type) return;
+
 
       const position = instance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
       const value    = DEFAULT_VALUES[type] ?? 0;
       const nodeType = type === 'ground' ? 'groundNode' : type === 'junction' ? 'junctionNode' : 'componentNode';
 
+
       // Generate unique component ID using persistent counters (never reuse deleted numbers)
       let componentId;
       let prefix;
-      
+     
       // Helper to ensure ID is unique (in case of stale counter)
       const existingIds = new Set(nodes.map(n => n.data?.componentId).filter(Boolean));
       const getUniqueId = (basePrefix, counter) => {
@@ -1105,7 +1189,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         }
         return { id: candidate, finalNum: num };
       };
-      
+     
       const componentConfig = {
         'dc_source': { prefix: 'V', counter: 'dc_source' },
         'current_source': { prefix: 'I', counter: 'current_source' },
@@ -1117,6 +1201,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         'switch': { prefix: 'SW', counter: 'switch' },
         'bulb': { prefix: 'L', counter: 'bulb' }
       };
+
 
       if (componentConfig[type]) {
         const { prefix, counter } = componentConfig[type];
@@ -1131,6 +1216,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       } else {
         componentId = `${type}_${Date.now()}`;
       }
+
 
       const newNode = {
         id: `${type}_${Date.now()}`,
@@ -1154,15 +1240,18 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         style: getNodeStyle(type),
       };
 
+
       setNodes((nds) => [...nds, newNode]);
     },
     [handleEditValue, handleChangeDraft, handleSaveDraft, handleCancelDraft, handleResetDesignValue, handleToggleSwitch, setNodes, nodes, componentCounters, setComponentCounters]
   );
 
+
   const onDragOver = useCallback((event) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
   }, []);
+
 
   // ── Keyboard handler ──────────────────────────────────────────────────────
   const onKeyDown = useCallback(
@@ -1170,14 +1259,15 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       const tag = document.activeElement?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
+
       // ── Delete / Backspace ───────────────────────────────────────────────
       if (event.key === 'Delete' || event.key === 'Backspace') {
         // Collect IDs of nodes being deleted (before state update)
         const deletedNodeIds = new Set(nodes.filter(n => n.selected).map(n => n.id));
-        
+       
         // Remove selected nodes
         setNodes((nds) => nds.filter((n) => !n.selected));
-        
+       
         // Remove selected edges AND any edges connected to deleted nodes
         setEdges((eds) => eds.filter((e) => {
           // Remove if edge is selected
@@ -1189,28 +1279,32 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         return;
       }
 
+
       // ── Ctrl+R: rotate selected components 90° clockwise ────────────────
       if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
         event.preventDefault();
+
 
         setNodes((nds) =>
           nds.map((n) => {
             if (!n.selected) return n;
             const ctype = n.data?.componentType;
             if (!ctype || ctype === 'junction' || ctype === 'ground') return n;
-            
+           
             const oldRot = n.data?.rotation ?? 0;
             const newRot = (oldRot + 90) % 360;
-            
+           
             return { ...n, data: { ...n.data, rotation: newRot } };
           })
         );
+
 
         return;
       }
     },
     [setNodes, setEdges, nodes]
   );
+
 
   // ── nodeTypes (stable reference — recreated only when mode changes) ───────
   const nodeTypes = useMemo(
@@ -1222,10 +1316,12 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
     [mode]
   );
 
+
   // ── Sync canvas state up to App.jsx ──────────────────────────────────────
   useEffect(() => {
     if (setCircuit) setCircuit({ nodes, edges });
   }, [nodes, edges, setCircuit]);
+
 
   // ── Read-only mode: mirror the passed-in circuit (results page canvas) ────
   useEffect(() => {
@@ -1235,9 +1331,11 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
     }
   }, [isReadOnly, circuit, setNodes, setEdges]);
 
+
   // ── Load preset circuit (education simulator lessons) ───────────────────
   useEffect(() => {
     if (isReadOnly || !presetLoad?.loadId) return;
+
 
     const enrichNode = (node) => {
       if (node.type === 'junctionNode' || node.data?.componentType === 'junction') {
@@ -1260,6 +1358,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       };
     };
 
+
     setNodes((presetLoad.nodes ?? []).map(enrichNode));
     setEdges(presetLoad.edges ?? []);
     if (presetLoad.counters) {
@@ -1280,6 +1379,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
     setComponentCounters,
   ]);
 
+
   return (
     <div
       style={{ width: '100%', height: '100%' }}
@@ -1294,6 +1394,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
           <kbd>Del</kbd> to delete | <kbd>Ctrl+R</kbd> to rotate
         </div>
       )}
+
 
       <ReactFlow
         nodes={nodes}
@@ -1338,5 +1439,6 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
     </div>
   );
 }
+
 
 export default CircuitCanvas;
