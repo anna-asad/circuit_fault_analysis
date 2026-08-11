@@ -365,15 +365,15 @@ export const LESSONS = [
     },
   },
   {
-    id: 'i-lab-9-nilsson-ex28',
+    id: 'i-lab-9-multimesh',
     moduleId: 'intermediate',
-    title: 'Nilsson Ex 2.8 Multi-Source',
+    title: 'MultiMesh Circuit',
     subtitle: 'Dataset: nilsson_ex2_8_multi_source',
     circuitKey: 'nilsson_ex2_8_multi_source',
     difficulty: 'Intermediate',
     durationMin: 15,
     datasetCircuitId: 'nilsson_ex2_8_multi_source',
-    objectives: ['Combine voltage and current sources', 'Verify node c voltage'],
+    objectives: ['Analyze multi-mesh network with voltage and current sources', 'Apply mesh current method'],
     steps: [
       { type: 'observe', text: 'V1=24 V, I1=6 A, five resistors (dataset design_values).' },
       {
