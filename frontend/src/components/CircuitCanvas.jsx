@@ -9,9 +9,80 @@ import ReactFlow, {
   useEdgesState,
   addEdge,
   useUpdateNodeInternals,
+  getBezierPath,
+  getStraightPath,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import './CircuitCanvas.css';
+
+// ── Custom orthogonal edge ────────────────────────────────────────────────────
+// Renders proper Manhattan-style routing for circuit diagrams.
+// Creates clean rectangular paths by:
+// 1. Extending straight out from source handle
+// 2. Making single 90° turn
+// 3. Extending straight to target handle
+// This creates textbook-style circuit diagram boxes.
+function OrthogonalEdge({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  style = {},
+  markerEnd,
+  data,
+}) {
+  const sx = sourceX;
+  const sy = sourceY;
+  const tx = targetX;
+  const ty = targetY;
+
+  // Threshold for considering coordinates "aligned" (accounts for floating-point rounding)
+  const ALIGN_THRESHOLD = 0.5;
+
+  let d;
+
+  // Check if source and target are already axis-aligned (straight line)
+  const isHorizontallyAligned = Math.abs(sy - ty) < ALIGN_THRESHOLD;
+  const isVerticallyAligned = Math.abs(sx - tx) < ALIGN_THRESHOLD;
+
+  if (isHorizontallyAligned) {
+    // Draw straight horizontal line
+    d = `M ${sx},${sy} L ${tx},${ty}`;
+  } else if (isVerticallyAligned) {
+    // Draw straight vertical line
+    d = `M ${sx},${sy} L ${tx},${ty}`;
+  } else {
+    // Manhattan routing: exit in handle direction, then make ONE turn to target
+    // This creates clean L-shaped paths that form rectangular boxes
+    
+    const sourceIsHorizontal = 
+      sourcePosition === Position.Left || sourcePosition === Position.Right;
+    
+    if (sourceIsHorizontal) {
+      // Source exits horizontally → go all the way to target X, then turn vertical to target Y
+      // This creates a clean L: horizontal segment, then vertical segment
+      d = `M ${sx},${sy} L ${tx},${sy} L ${tx},${ty}`;
+    } else {
+      // Source exits vertically → go all the way to target Y, then turn horizontal to target X
+      // This creates a clean L: vertical segment, then horizontal segment
+      d = `M ${sx},${sy} L ${sx},${ty} L ${tx},${ty}`;
+    }
+  }
+
+  return (
+    <path
+      id={id}
+      style={style}
+      className="react-flow__edge-path"
+      d={d}
+      markerEnd={markerEnd}
+      fill="none"
+    />
+  );
+}
 
 // ── SVG symbols ───────────────────────────────────────────────────────────────
 const COMPONENT_SVGS = {
@@ -702,10 +773,19 @@ function JunctionNode({ data, style }) {
   
   return (
     <div className="circuit-node circuit-node-junction" style={data?.style || style}>
+      {/* Each handle is BOTH source and target to allow bidirectional connections */}
       <Handle type="source" position={handlePositions.left}   id="left"   className="circuit-handle" />
+      <Handle type="target" position={handlePositions.left}   id="left"   className="circuit-handle" style={{ opacity: 0 }} />
+      
       <Handle type="source" position={handlePositions.right}  id="right"  className="circuit-handle" />
+      <Handle type="target" position={handlePositions.right}  id="right"  className="circuit-handle" style={{ opacity: 0 }} />
+      
       <Handle type="source" position={handlePositions.top}    id="top"    className="circuit-handle" />
+      <Handle type="target" position={handlePositions.top}    id="top"    className="circuit-handle" style={{ opacity: 0 }} />
+      
       <Handle type="source" position={handlePositions.bottom} id="bottom" className="circuit-handle" />
+      <Handle type="target" position={handlePositions.bottom} id="bottom" className="circuit-handle" style={{ opacity: 0 }} />
+      
       <div className="junction-dot" />
     </div>
   );
@@ -715,8 +795,9 @@ function JunctionNode({ data, style }) {
 function GroundNode({ data, style }) {
   return (
     <div className="circuit-node circuit-node-ground" style={data?.style || style}>
-      {/* Single connection handle at the top of the ground symbol */}
+      {/* Connection handle at the top - both source and target for bidirectional */}
       <Handle type="source" position={Position.Top} id="top" className="circuit-handle" />
+      <Handle type="target" position={Position.Top} id="top" className="circuit-handle" style={{ opacity: 0 }} />
       <svg
         className="ground-svg"
         viewBox="0 0 40 36"
@@ -857,10 +938,9 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         addEdge(
           {
             ...params,
-            type: 'smoothstep',
+            type: 'orthogonal',
             animated: false,
             style: { stroke: isGroundEdge ? GROUND_WIRE_COLOR : WIRE_COLOR, strokeWidth: 2 },
-            pathOptions: { borderRadius: 0 },
           },
           eds
         )
@@ -968,7 +1048,6 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       const isGroundNode = startNode?.data?.componentType === 'ground';
       const WIRE_STYLE     = { stroke: WIRE_COLOR,        strokeWidth: 2 };
       const GND_WIRE_STYLE = { stroke: GROUND_WIRE_COLOR, strokeWidth: 2 };
-      const WIRE_OPTS      = { pathOptions: { borderRadius: 0 } };
 
       const connectingHandle = startHandleId ?? 'left';
       const connectingAnchor = getHandlePos(startNode, connectingHandle);
@@ -977,39 +1056,41 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       const throughHandles = horizontal ? ['left', 'right'] : ['top', 'bottom'];
       const branchCandidates = horizontal ? ['top', 'bottom'] : ['left', 'right'];
 
+      // Assign through-handles based on which side of the junction the original endpoints are.
       const junctionToSrcHandle = horizontal
-        ? (srcPos.x < jx ? throughHandles[0] : throughHandles[1])
-        : (srcPos.y < jy ? throughHandles[0] : throughHandles[1]);
-      const junctionToTgtHandle = junctionToSrcHandle === throughHandles[0]
-        ? throughHandles[1]
-        : throughHandles[0];
+        ? (srcPos.x < jx ? 'left' : 'right')
+        : (srcPos.y < jy ? 'top' : 'bottom');
+      const junctionToTgtHandle = horizontal
+        ? (tgtPos.x < jx ? 'left' : 'right')
+        : (tgtPos.y < jy ? 'top' : 'bottom');
 
-      const connectingJunctionHandle = pickClosestHandle(
-        branchCandidates,
-        connectingAnchor,
-        jx,
-        jy,
-        jWidth,
-        jHeight
-      );
-
-      // Build explicit handle position map to prevent zigzags.
-      // Through-handles (continuing the original wire) must align with wire orientation.
-      // Branch handles use the perpendicular axis.
-      const junctionHandlePositions = {};
+      // Pick the branch handle that keeps the new wire segment axis-aligned.
+      // For a horizontal wire junction, the connecting wire must be vertical (use top/bottom).
+      // For a vertical wire junction, the connecting wire must be horizontal (use left/right).
+      // Choose the branch handle closest to the connecting component's anchor point
+      // on the axis perpendicular to the original wire.
+      let connectingJunctionHandle;
       if (horizontal) {
-        // Original wire is horizontal → through-handles are left/right
-        junctionHandlePositions.left = Position.Left;
-        junctionHandlePositions.right = Position.Right;
-        junctionHandlePositions.top = Position.Top;
-        junctionHandlePositions.bottom = Position.Bottom;
+        // Wire runs left-right → branch must go up or down.
+        connectingJunctionHandle = connectingAnchor.y < jy ? 'top' : 'bottom';
       } else {
-        // Original wire is vertical → through-handles are top/bottom
-        junctionHandlePositions.top = Position.Top;
-        junctionHandlePositions.bottom = Position.Bottom;
-        junctionHandlePositions.left = Position.Left;
-        junctionHandlePositions.right = Position.Right;
+        // Wire runs top-bottom → branch must go left or right.
+        connectingJunctionHandle = connectingAnchor.x < jx ? 'left' : 'right';
       }
+
+      // Debug log: verify handle assignments maintain axis-alignment
+      console.log('[Junction] Wire orientation:', horizontal ? 'horizontal' : 'vertical',
+        '| Through-handles:', junctionToSrcHandle, '→', junctionToTgtHandle,
+        '| Branch handle:', connectingJunctionHandle);
+
+      // Build explicit handle position map. All handles use their natural cardinal positions.
+      // (Removed dead code — both branches assigned identical values.)
+      const junctionHandlePositions = {
+        left: Position.Left,
+        right: Position.Right,
+        top: Position.Top,
+        bottom: Position.Bottom,
+      };
 
       setNodes(nds => [
         ...nds,
@@ -1031,7 +1112,6 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
       setEdges(eds => {
         const filtered = eds.filter(e => e.id !== nearestEdge.id);
         const originalStyle = nearestEdge.style || WIRE_STYLE;
-        const originalType = nearestEdge.type || 'smoothstep';
 
         return [
           ...filtered,
@@ -1041,9 +1121,8 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
             sourceHandle: nearestEdge.sourceHandle,
             target:       junctionId,
             targetHandle: junctionToSrcHandle,
-            type:         originalType,
+            type:         'orthogonal',
             style:        originalStyle,
-            ...WIRE_OPTS,
           },
           {
             id:           `e_${junctionId}_${nearestEdge.target}_${Date.now()}`,
@@ -1051,9 +1130,8 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
             sourceHandle: junctionToTgtHandle,
             target:       nearestEdge.target,
             targetHandle: nearestEdge.targetHandle,
-            type:         originalType,
+            type:         'orthogonal',
             style:        originalStyle,
-            ...WIRE_OPTS,
           },
           {
             id:           `e_${startNodeId}_${junctionId}_${Date.now()}`,
@@ -1061,9 +1139,8 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
             sourceHandle: connectingHandle,
             target:       junctionId,
             targetHandle: connectingJunctionHandle,
-            type:         'smoothstep',
+            type:         'orthogonal',
             style:        isGroundNode ? GND_WIRE_STYLE : WIRE_STYLE,
-            ...WIRE_OPTS,
           },
         ];
       });
@@ -1222,6 +1299,14 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
     [mode]
   );
 
+  // ── edgeTypes (stable reference for custom orthogonal edge) ────────────────
+  const edgeTypes = useMemo(
+    () => ({
+      orthogonal: OrthogonalEdge,
+    }),
+    []
+  );
+
   // ── Sync canvas state up to App.jsx ──────────────────────────────────────
   useEffect(() => {
     if (setCircuit) setCircuit({ nodes, edges });
@@ -1307,6 +1392,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         onDragOver={onDragOver}
         onInit={(instance) => { reactFlowRef.current = instance; }}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         connectionMode="loose"
         snapToGrid={true}
         snapGrid={[10, 10]}
@@ -1316,8 +1402,7 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         nodesConnectable={!isReadOnly}
         elementsSelectable={!isReadOnly}
         defaultEdgeOptions={{
-          type: 'smoothstep',
-          pathOptions: { borderRadius: 0 },
+          type: 'orthogonal',
         }}
       >
         <Controls />

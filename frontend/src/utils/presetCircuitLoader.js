@@ -357,83 +357,167 @@ function buildKvlSeriesLoop() {
 function buildMultisource5RNetwork() {
   const d = dv('multisource_5R_network');
   const s = src('multisource_5R_network');
-  const jA = junctionNode({ x: 220, y: 80 });
-  const jB = junctionNode({ x: 420, y: 80 });
-  const jC = junctionNode({ x: 320, y: 200 });
-  const jG = junctionNode({ x: 320, y: 320 });
-  const gnd = compNode('GND', 'ground', 0, { x: 320, y: 400 });
-  const v1 = compNode('V1', 'dc_source', s.V1, { x: 40, y: 80 });
-  const v2 = compNode('V2', 'dc_source', s.V2, { x: 40, y: 180 });
-  const i1 = compNode('I1', 'current_source', s.I1, { x: 40, y: 300 }, { rotation: 0 });
-  const r1 = compNode('R1', 'resistor', d.R1, { x: 140, y: 200 });
-  const r2 = compNode('R2', 'resistor', d.R2, { x: 320, y: 80 });
-  const r3 = compNode('R3', 'resistor', d.R3, { x: 180, y: 140 });
-  const r4 = compNode('R4', 'resistor', d.R4, { x: 420, y: 160 });
-  const r5 = compNode('R5', 'resistor', d.R5, { x: 420, y: 280 });
+  
+  // EXACT Figure 4 topology:
+  // Middle rail junctions (left to right): [R1]—[V1]—[R2]—[V2]—[R4]—[I1]—[R5]
+  // R3 parallel ABOVE, spanning from V1 junction to I1 junction (parallel to R2 and R4 series)
+  // Bottom rail: return path
+  
+  // Middle rail junction nodes (horizontal, left to right)
+  const jR1 = junctionNode({ x: 120, y: 200 });         // After R1
+  const jV1 = junctionNode({ x: 240, y: 200 });         // After V1, before R2
+  const jV2 = junctionNode({ x: 400, y: 200 });         // After R2, before R4 (V2 connects here)
+  const jI1 = junctionNode({ x: 560, y: 200 });         // After R4, before R5 (I1 connects here)
+  const jR5 = junctionNode({ x: 680, y: 200 });         // After R5
+  
+  // Bottom rail junctions
+  const jBotLeft = junctionNode({ x: 120, y: 400 });
+  const jBotRight = junctionNode({ x: 680, y: 400 });
+  
+  // Top junctions for R3 parallel path
+  const jTopV1 = junctionNode({ x: 240, y: 80 });       // Above V1 junction
+  const jTopI1 = junctionNode({ x: 560, y: 80 });       // Above I1 junction
+  
+  // Horizontal components on middle rail
+  const r2 = compNode('R2', 'resistor', d.R2, { x: 310, y: 200 }, { rotation: 0 });  // Between V1 and V2
+  const r4 = compNode('R4', 'resistor', d.R4, { x: 470, y: 200 }, { rotation: 0 });  // Between V2 and I1
+  
+  // Top horizontal component - R3 parallel to (R2 + R4)
+  const r3 = compNode('R3', 'resistor', d.R3, { x: 390, y: 80 }, { rotation: 0 });
+  
+  // Vertical components (rotation 90° for vertical orientation)
+  const r1 = compNode('R1', 'resistor', d.R1, { x: 120, y: 290 }, { rotation: 90 });
+  const v1 = compNode('V1', 'dc_source', s.V1, { x: 240, y: 290 }, { rotation: 90 });
+  const v2 = compNode('V2', 'dc_source', s.V2, { x: 400, y: 290 }, { rotation: 90 });
+  const i1 = compNode('I1', 'current_source', s.I1, { x: 560, y: 300 }, { rotation: 0 });
+  const r5 = compNode('R5', 'resistor', d.R5, { x: 680, y: 290 }, { rotation: 90 });
+  
   const edges = [
-    wire(v1.id, 'right', jA.id, 'left', 0),
-    wire(v1.id, 'left', jC.id, 'left', 1),
-    wire(v2.id, 'right', jB.id, 'left', 2),
-    wire(v2.id, 'left', jC.id, 'right', 3),
-    wire(jA.id, 'right', r2.id, 'left', 4),
-    wire(r2.id, 'right', jB.id, 'left', 5),
-    wire(jA.id, 'bottom', r3.id, 'left', 6),
-    wire(r3.id, 'right', jC.id, 'top', 7),
-    wire(jB.id, 'bottom', r4.id, 'left', 8),
-    wire(r4.id, 'right', jC.id, 'bottom', 9),
-    wire(jA.id, 'top', r1.id, 'left', 10),
-    wire(r1.id, 'right', jG.id, 'left', 11),
-    wire(jC.id, 'right', r5.id, 'left', 12),
-    wire(r5.id, 'right', jG.id, 'right', 13),
-    wire(i1.id, 'right', jG.id, 'bottom', 14),
-    wire(jC.id, 'left', i1.id, 'left', 15),
-    wire(gnd.id, 'top', jG.id, 'bottom', 16),
+    // Middle horizontal rail: jR1 — jV1 — R2 — jV2 — R4 — jI1 — jR5
+    wire(jR1.id, 'right', jV1.id, 'left', 0),
+    wire(jV1.id, 'right', r2.id, 'left', 1),
+    wire(r2.id, 'right', jV2.id, 'left', 2),
+    wire(jV2.id, 'right', r4.id, 'left', 3),
+    wire(r4.id, 'right', jI1.id, 'left', 4),
+    wire(jI1.id, 'right', jR5.id, 'left', 5),
+    
+    // Top parallel path: jV1 up to jTopV1 — R3 — jTopI1 — down to jI1
+    wire(jV1.id, 'top', jTopV1.id, 'bottom', 6),
+    wire(jTopV1.id, 'right', r3.id, 'left', 7),
+    wire(r3.id, 'right', jTopI1.id, 'left', 8),
+    wire(jTopI1.id, 'bottom', jI1.id, 'top', 9),
+    
+    // Vertical branch 1: R1 (far left)
+    wire(jR1.id, 'bottom', r1.id, 'left', 10),
+    wire(r1.id, 'right', jBotLeft.id, 'top', 11),
+    
+    // Vertical branch 2: V1 (10V, between R1 and R2)
+    wire(jV1.id, 'bottom', v1.id, 'left', 12),
+    wire(v1.id, 'right', jBotLeft.id, 'right', 13),
+    
+    // Vertical branch 3: V2 (15V, between R2 and R4)
+    wire(jV2.id, 'bottom', v2.id, 'left', 14),
+    wire(v2.id, 'right', jBotLeft.id, 'right', 15),
+    
+    // Vertical branch 4: I1 (5A, between R4 and R5)
+    wire(jI1.id, 'bottom', i1.id, 'left', 16),
+    wire(i1.id, 'right', jBotRight.id, 'top', 17),
+    
+    // Vertical branch 5: R5 (far right with 20V)
+    wire(jR5.id, 'bottom', r5.id, 'left', 18),
+    wire(r5.id, 'right', jBotRight.id, 'right', 19),
+    
+    // Bottom rail: jBotLeft — jBotRight
+    wire(jBotLeft.id, 'right', jBotRight.id, 'left', 20),
   ];
+  
   return {
-    nodes: [v1, v2, i1, r1, r2, r3, r4, r5, jA, jB, jC, jG, gnd],
+    nodes: [r1, r2, r3, r4, r5, v1, v2, i1, 
+            jR1, jV1, jV2, jI1, jR5,
+            jTopV1, jTopI1, jBotLeft, jBotRight],
     edges,
-    counters: countCounters([v1, v2, i1, r1, r2, r3, r4, r5]),
+    counters: countCounters([r1, r2, r3, r4, r5, v1, v2, i1]),
   };
 }
 
-function buildNilssonEx28MultiSource() {
+function buildMultiMeshCircuit() {
   const d = dv('nilsson_ex2_8_multi_source');
   const s = src('nilsson_ex2_8_multi_source');
-  const y = 180;
-  const v1 = compNode('V1', 'dc_source', s.V1, { x: 30, y: 100 });
-  const r1 = compNode('R1', 'resistor', d.R1, { x: 170, y: 80 });
-  const r2 = compNode('R2', 'resistor', d.R2, { x: 170, y: 160 });
-  const ja = junctionNode({ x: 250, y: 120 });
-  const r4 = compNode('R4', 'resistor', d.R4, { x: 370, y: 160 });
-  const r5 = compNode('R5', 'resistor', d.R5, { x: 370, y: 260 });
-  const r3 = compNode('R3', 'resistor', d.R3, { x: 250, y: 260 });
-  const i1 = compNode('I1', 'current_source', s.I1, { x: 30, y: 280 }, { rotation: 0 });
-  const j5 = junctionNode({ x: 250, y: 280 });
-  const jRet = junctionNode({ x: 490, y: 200 });
-  const gnd = compNode('GND', 'ground', 0, { x: 490, y: 320 });
+
+  // Circuit from hand-drawn diagram:
+  // - 24V source on left (vertical)
+  // - 2Ω resistor at top (horizontal)
+  // - 3Ω resistor in upper middle loop (horizontal)
+  // - 4Ω + 7Ω resistors in series along the bottom (horizontal)
+  // - 6A current source is its OWN branch, in parallel with the
+  //   whole 4Ω+7Ω series path (same two end-nodes, not spliced between them)
+  // - 5Ω resistor on right side (vertical)
+
+  // Four corner junctions for clean rectangular topology
+  const jTopLeft = junctionNode({ x: 150, y: 100 });
+  const jTopRight = junctionNode({ x: 600, y: 100 });
+  const jBotLeft = junctionNode({ x: 150, y: 380 });
+  const jBotRight = junctionNode({ x: 600, y: 380 });
+
+  // Center junctions for middle horizontal path
+  const jMidLeft = junctionNode({ x: 150, y: 240 });
+  const jMidRight = junctionNode({ x: 600, y: 240 });
+
+  // Left side: 24V source (vertical)
+  const v1 = compNode('V1', 'dc_source', s.V1, { x: 150, y: 170 }, { rotation: 90 });
+
+  // Top: 2Ω resistor (horizontal) - dataset R1
+  const r1 = compNode('R1', 'resistor', d.R1, { x: 360, y: 100 }, { rotation: 0 });
+
+  // Upper middle: 3Ω resistor (horizontal) - dataset R2
+  const r2 = compNode('R2', 'resistor', d.R2, { x: 360, y: 240 }, { rotation: 0 });
+
+  // Bottom left: 4Ω resistor (horizontal) - dataset R3
+  const r3 = compNode('R3', 'resistor', d.R3, { x: 240, y: 380 }, { rotation: 0 });
+
+  // Bottom right: 7Ω resistor (horizontal) - dataset R5
+  const r5label = compNode('R5', 'resistor', d.R5, { x: 480, y: 380 }, { rotation: 0 });
+
+  // Right side: 5Ω resistor (vertical) - dataset R4
+  const r4 = compNode('R4', 'resistor', d.R4, { x: 600, y: 170 }, { rotation: 90 });
+
+  // 6A current source: horizontal, above the 4Ω and 7Ω resistors
+  const i1 = compNode('I1', 'current_source', s.I1, { x: 375, y: 310 }, { rotation: 90 });
+
   const edges = [
-    wire(v1.id, 'right', r1.id, 'left', 0),
-    wire(v1.id, 'right', r2.id, 'left', 1),
-    wire(r1.id, 'right', ja.id, 'left', 2),
-    wire(r2.id, 'right', ja.id, 'left', 3),
-    wire(ja.id, 'right', r4.id, 'left', 4),
-    wire(ja.id, 'bottom', j5.id, 'left', 5),
-    wire(i1.id, 'right', r3.id, 'left', 6),
-    wire(r3.id, 'right', j5.id, 'right', 7),
-    wire(j5.id, 'top', r5.id, 'left', 8),
-    wire(r4.id, 'right', jRet.id, 'left', 9),
-    wire(r5.id, 'right', jRet.id, 'left', 10),
-    wire(jRet.id, 'right', v1.id, 'left', 11),
-    wire(jRet.id, 'right', i1.id, 'left', 12),
-    wire(gnd.id, 'top', ja.id, 'bottom', 13),
+    // Left vertical: jTopLeft — V1 (24V) — jMidLeft — jBotLeft
+    wire(jTopLeft.id, 'bottom', v1.id, 'left', 0),
+    wire(v1.id, 'right', jMidLeft.id, 'top', 1),
+    wire(jMidLeft.id, 'bottom', jBotLeft.id, 'top', 2),
+
+    // Top horizontal: jTopLeft — R1 (2Ω) — jTopRight
+    wire(jTopLeft.id, 'right', r1.id, 'left', 3),
+    wire(r1.id, 'right', jTopRight.id, 'left', 4),
+
+    // Middle horizontal: jMidLeft — R2 (3Ω) — jMidRight
+    wire(jMidLeft.id, 'right', r2.id, 'left', 5),
+    wire(r2.id, 'right', jMidRight.id, 'left', 6),
+
+    // Bottom horizontal series path: jBotLeft — R3 (4Ω) — R5 (7Ω) — jBotRight
+    wire(jBotLeft.id, 'right', r3.id, 'left', 7),
+    wire(r3.id, 'right', r5label.id, 'left', 8),
+    wire(r5label.id, 'right', jBotRight.id, 'left', 9),
+
+    // Right vertical: jTopRight — R4 (5Ω) — jMidRight — jBotRight
+    wire(jTopRight.id, 'bottom', r4.id, 'left', 10),
+    wire(r4.id, 'right', jMidRight.id, 'top', 11),
+    wire(jMidRight.id, 'bottom', jBotRight.id, 'top', 12),
+
+    wire(jBotLeft.id, 'bottom', i1.id, 'left', 13),
+    wire(i1.id, 'right', jBotRight.id, 'bottom', 14),
   ];
+
   return {
-    nodes: [v1, i1, r1, r2, r3, r4, r5, ja, j5, jRet, gnd],
+    nodes: [v1, r1, r2, r3, r4, r5label, i1, jTopLeft, jTopRight, jMidLeft, jMidRight, jBotLeft, jBotRight],
     edges,
-    counters: countCounters([v1, i1, r1, r2, r3, r4, r5]),
+    counters: countCounters([v1, r1, r2, r3, r4, r5label, i1]),
   };
 }
-
 const BUILDERS = {
   beginner_switch_bulb: buildBeginnerSwitchBulb,
   beginner_two_resistors: buildBeginnerTwoResistors,
@@ -447,7 +531,7 @@ const BUILDERS = {
   current_source_t_network: buildCurrentSourceTNetwork,
   kvl_series_loop_ABCDEF: buildKvlSeriesLoop,
   multisource_5R_network: buildMultisource5RNetwork,
-  nilsson_ex2_8_multi_source: buildNilssonEx28MultiSource,
+  nilsson_ex2_8_multi_source: buildMultiMeshCircuit,
 };
 
 export function loadPresetCircuit(circuitKey, options = {}) {
