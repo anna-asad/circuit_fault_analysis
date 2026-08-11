@@ -1,0 +1,90 @@
+.subscription-cancel-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #0a0e1a;
+  padding: 20px;
+}
+
+.cancel-card {
+  background: #1a1f2e;
+  border: 1px solid #2d3748;
+  border-radius: 16px;
+  padding: 48px 40px;
+  max-width: 500px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.cancel-icon {
+  width: 80px;
+  height: 80px;
+  background: #ef4444;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  font-weight: bold;
+  margin: 0 auto 24px;
+}
+
+.cancel-card h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin: 0 0 16px;
+}
+
+.cancel-card p {
+  font-size: 16px;
+  color: #94a3b8;
+  margin: 0 0 12px;
+  line-height: 1.6;
+}
+
+.cancel-info {
+  font-weight: 500;
+  color: #e2e8f0;
+  margin-bottom: 32px;
+}
+
+.cancel-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.retry-button,
+.home-button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.retry-button {
+  background: #00d9ff;
+  color: #0a0e1a;
+}
+
+.retry-button:hover {
+  background: #00c4e6;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 217, 255, 0.4);
+}
+
+.home-button {
+  background: #2d3748;
+  color: #e2e8f0;
+}
+
+.home-button:hover {
+  background: #475569;
+}

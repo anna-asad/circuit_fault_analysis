@@ -2,11 +2,14 @@
 
 import logging
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
 from typing import List, Dict, Any, Optional
 import uvicorn
+import stripe
+from dotenv import load_dotenv
+from supabase import create_client, Client
 
 from validators import CircuitValidator, validate_circuit_quick
 from netlist_generator import generate_netlist
@@ -16,8 +19,22 @@ from fault_analyzer import FaultAnalyzer
 from rag import explain_fault
 from report_generator import generate_fault_report, FaultReport, save_report_as_pdf
 from fastapi.responses import FileResponse
+from auth import verify_token
 import tempfile
 import os
+
+# Load environment variables
+load_dotenv()
+
+# Configure Stripe
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+# Configure Supabase
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
 log = logging.getLogger(__name__)
 
@@ -698,7 +715,112 @@ async def generate_report_pdf_endpoint(circuit: CircuitModel):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+
+
+# ============================================================================
+# Stripe Subscription Endpoints
+# ============================================================================
+
+@app.post("/api/create-checkout-session")
+async def create_checkout_session():
+    """
+    Create a Stripe Checkout Session for subscription payment.
+    Returns the session URL to redirect the user to Stripe's hosted checkout page.
+    """
+    try:
+        if not stripe.api_key:
+            raise HTTPException(status_code=500, detail="Stripe is not configured")
+        
+        if not STRIPE_PRICE_ID:
+            raise HTTPException(status_code=500, detail="Stripe price ID is not configured")
+        
+        # Create Stripe Checkout Session
+        checkout_session = stripe.checkout.Session.create(
+            mode='subscription',
+            line_items=[{
+                'price': STRIPE_PRICE_ID,
+                'quantity': 1,
+            }],
+            success_url=f"{FRONTEND_URL}/success?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{FRONTEND_URL}/cancel",
+        )
+        
+        return {"url": checkout_session.url}
+        
+    except stripe.error.StripeError as e:
+        log.error(f"Stripe error: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Stripe error: {str(e)}")
+    except Exception as e:
+        log.error(f"Failed to create checkout session: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
+
+
+@app.get("/api/stripe-config")
+async def get_stripe_config():
+    """
+    Returns the Stripe publishable key for frontend use.
+    """
+    publishable_key = os.getenv("STRIPE_PUBLISHABLE_KEY")
+    if not publishable_key:
+        raise HTTPException(status_code=500, detail="Stripe publishable key not configured")
+    
+    return {"publishableKey": publishable_key}
+
+
+# ============================================================================
+# User Progress Endpoints (Protected)
+# ============================================================================
+
+class ProgressUpdate(BaseModel):
+    lesson_id: str
+    status: str  # 'not_started', 'in_progress', 'completed'
+
+@app.get("/api/user/progress")
+async def get_user_progress(user: dict = Depends(verify_token)):
+    """
+    Get all lesson progress for the authenticated user.
+    """
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    user_id = user["sub"]
+    
+    try:
+        response = supabase.table("user_progress").select("*").eq("user_id", user_id).execute()
+        return {"progress": response.data}
+    except Exception as e:
+        log.error(f"Failed to fetch user progress: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch progress: {str(e)}")
+
+
+@app.post("/api/user/progress")
+async def update_user_progress(
+    progress: ProgressUpdate,
+    user: dict = Depends(verify_token)
+):
+    """
+    Update lesson progress for the authenticated user.
+    """
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    user_id = user["sub"]
+    
+    try:
+        # Upsert progress (insert or update)
+        data = {
+            "user_id": user_id,
+            "lesson_id": progress.lesson_id,
+            "status": progress.status,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        response = supabase.table("user_progress").upsert(data, on_conflict="user_id,lesson_id").execute()
+        return {"success": True, "data": response.data}
+    except Exception as e:
+        log.error(f"Failed to update user progress: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update progress: {str(e)}")
 
 
 # ============================================================================

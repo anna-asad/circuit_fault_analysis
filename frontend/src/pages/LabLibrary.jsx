@@ -1,5 +1,7 @@
 import { MODULES, LESSONS } from '../data/lessons';
 import { getLessonStatus } from '../utils/progressStorage';
+import SubscribeButton from '../components/SubscribeButton';
+import { useAuth } from '../contexts/AuthContext';
 import './LabLibrary.css';
 
 const STATUS_LABELS = {
@@ -9,6 +11,12 @@ const STATUS_LABELS = {
 };
 
 function LabLibrary({ onStartLesson, onFreePlay }) {
+  const { signOut, user } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+  };
+
   return (
     <div className="lab-library">
       <header className="lab-library-header">
@@ -17,10 +25,21 @@ function LabLibrary({ onStartLesson, onFreePlay }) {
           <p className="lab-library-tagline">
             Learn DC circuits by building, predicting, simulating, and diagnosing.
           </p>
+          {user && (
+            <p style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
+              Logged in as: {user.email}
+            </p>
+          )}
         </div>
-        <button type="button" className="lab-free-play-btn" onClick={onFreePlay}>
-          Free Play →
-        </button>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <SubscribeButton buttonText="🚀 Upgrade to Pro" />
+          <button type="button" className="lab-free-play-btn" onClick={onFreePlay}>
+            Free Play →
+          </button>
+          <button type="button" className="lab-free-play-btn" onClick={handleLogout} style={{ background: '#ef4444' }}>
+            Logout
+          </button>
+        </div>
       </header>
 
       <main className="lab-library-body">
