@@ -526,9 +526,8 @@ function buildMultiMeshCircuit() {
   // Right side: 5Ω resistor (vertical) - dataset R4
   const r4 = compNode('R4', 'resistor', d.R4, { x: 600, y: 170 }, { rotation: 90 });
 
-  // 6A current source: horizontal, parallel to R2 (bridges NodeA <-> NodeB directly).
-  // Fixed: was rotation 90 while wired with left/right ports — contradicted itself.
-  const i1 = compNode('I1', 'current_source', s.I1, { x: 375, y: 310 }, { rotation: 0 });
+  // 6A current source: vertical, parallel to R2 (bridges NodeA <-> NodeB directly).
+  const i1 = compNode('I1', 'current_source', s.I1, { x: 375, y: 310 }, { rotation: 90 });
 
   const edges = [
     // Left vertical: jTopLeft — V1 (24V) — jMidLeft — jBotLeft
