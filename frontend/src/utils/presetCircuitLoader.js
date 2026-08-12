@@ -354,13 +354,13 @@ function buildKvlSeriesLoop() {
   const s = src('kvl_series_loop_ABCDEF');
   const y = 300;
   
-  const rfa = compNode('R_FA', 'resistor', d.R_FA, { x: 100, y });
-  const rab = compNode('R_AB', 'resistor', d.R_AB, { x: 250, y });
-  const jB = junctionNode({ x: 400, y });
-  const rbc = compNode('R_BC', 'resistor', d.R_BC, { x: 550, y });
-  const vcd = compNode('V_CD', 'dc_source', s.V_CD, { x: 700, y });
-  const rde = compNode('R_DE', 'resistor', d.R_DE, { x: 850, y });
-  const vef = compNode('V_EF', 'dc_source', s.V_EF, { x: 1000, y });
+  const rfa = compNode('R_FA', 'resistor', d.R_FA, { x: 100, y:200 });
+  const rab = compNode('R_AB', 'resistor', d.R_AB, { x: 250, y:200 });
+  const jB = junctionNode({ x: 400, y:230 });
+  const rbc = compNode('R_BC', 'resistor', d.R_BC, { x: 550, y:200 });
+  const vcd = compNode('V_CD', 'dc_source', s.V_CD, { x: 700, y:205 }, { rotation: 0 });
+  const rde = compNode('R_DE', 'resistor', d.R_DE, { x: 850, y:200 });
+  const vef = compNode('V_EF', 'dc_source', s.V_EF, { x: 1000, y:250 }, { rotation: 90 });
   const gnd = compNode('GND', 'ground', 0, { x: 400, y: 500 });
   
   const edges = [
@@ -394,28 +394,28 @@ function buildMultisource5RNetwork() {
   // Middle rail junction nodes (horizontal, left to right)
   const jR1 = junctionNode({ x: 120, y: 200 });         // After R1
   const jV1 = junctionNode({ x: 240, y: 200 });         // After V1, before R2
-  const jV2 = junctionNode({ x: 400, y: 200 });         // After R2, before R4 (V2 connects here)
-  const jI1 = junctionNode({ x: 560, y: 200 });         // After R4, before R5 (I1 connects here)
-  const jR5 = junctionNode({ x: 680, y: 200 });         // After R5
+  const jV2 = junctionNode({ x: 440, y: 200 });         // After R2, before R4 (V2 connects here)
+  const jI1 = junctionNode({ x: 600, y: 200 });         // After R4, before R5 (I1 connects here)
+  const jR5 = junctionNode({ x: 720, y: 200 });         // After R5
 
   // Bottom rail junctions
   const jBotLeft = junctionNode({ x: 120, y: 400 });
-  const jBotRight = junctionNode({ x: 680, y: 400 });
+  const jBotRight = junctionNode({ x: 600, y: 400 });
 
   // Top junctions for R3 parallel path
   const jTopV1 = junctionNode({ x: 240, y: 80 });       // Above V1 junction
-  const jTopI1 = junctionNode({ x: 560, y: 80 });       // Above I1 junction
+  const jTopI1 = junctionNode({ x: 600, y: 80 });       // Above I1 junction
 
   // Horizontal components on middle rail
-  const r2 = compNode('R2', 'resistor', d.R2, { x: 310, y: 200 }, { rotation: 0 });  // Between V1 and V2
-  const r4 = compNode('R4', 'resistor', d.R4, { x: 470, y: 200 }, { rotation: 0 });  // Between V2 and I1
+  const r2 = compNode('R2', 'resistor', d.R2, { x: 310, y: 160 }, { rotation: 0 });  // Between V1 and V2
+  const r4 = compNode('R4', 'resistor', d.R4, { x: 470, y: 160 }, { rotation: 0 });  // Between V2 and I1
 
   // Top horizontal component - R3 parallel to (R2 + R4)
-  const r3 = compNode('R3', 'resistor', d.R3, { x: 390, y: 80 }, { rotation: 0 });
+  const r3 = compNode('R3', 'resistor', d.R3, { x: 390, y: 40 }, { rotation: 0 });
 
   // Vertical components (rotation 90° for vertical orientation)
-  const r1 = compNode('R1', 'resistor', d.R1, { x: 120, y: 290 }, { rotation: 90 });
-  const v1 = compNode('V1', 'dc_source', s.V1, { x: 240, y: 290 }, { rotation: 90 });
+  const r1 = compNode('R1', 'resistor', d.R1, { x: 80, y: 290 }, { rotation: 90 });
+  const v1 = compNode('V1', 'dc_source', s.V1, { x: 200, y: 290 }, { rotation: 90 });
   const v2 = compNode('V2', 'dc_source', s.V2, { x: 400, y: 290 }, { rotation: 90 });
   const i1 = compNode('I1', 'current_source', s.I1, { x: 560, y: 300 }, { rotation: 0 });
   const r5 = compNode('R5', 'resistor', d.R5, { x: 680, y: 290 }, { rotation: 90 });
@@ -497,22 +497,22 @@ function buildMultiMeshCircuit() {
   const jBotRight = junctionNode({ x: 600, y: 380 });
 
   // Center junctions for middle horizontal path
-  const jMidLeft = junctionNode({ x: 150, y: 240 });
-  const jMidRight = junctionNode({ x: 600, y: 240 });
+  const jMidLeft = junctionNode({ x: 150, y: 280 });
+  const jMidRight = junctionNode({ x: 600, y: 280 });
 
   // Ground junction sits between R3 and R5 on the bottom series path —
   // a plain junction node, never a source terminal.
-  const jGround = junctionNode({ x: 375, y: 380 });
+  const jGround = junctionNode({ x: 375, y: 420 });
 
   // Ground reference component — was missing entirely; required for the solver
   // to have a defined 0V node, same convention used by every other builder here.
   const gnd = compNode('GND', 'ground', 0, { x: 375, y: 480 });
 
   // Left side: 24V source (vertical)
-  const v1 = compNode('V1', 'dc_source', s.V1, { x: 150, y: 170 }, { rotation: 90 });
+  const v1 = compNode('V1', 'dc_source', s.V1, { x: 110, y: 170 }, { rotation: 90 });
 
   // Top: 2Ω resistor (horizontal) - dataset R1
-  const r1 = compNode('R1', 'resistor', d.R1, { x: 360, y: 100 }, { rotation: 0 });
+  const r1 = compNode('R1', 'resistor', d.R1, { x: 360, y: 70 }, { rotation: 0 });
 
   // Upper middle: 3Ω resistor (horizontal), parallel with I1 - dataset R2
   const r2 = compNode('R2', 'resistor', d.R2, { x: 360, y: 240 }, { rotation: 0 });
@@ -524,7 +524,7 @@ function buildMultiMeshCircuit() {
   const r5label = compNode('R5', 'resistor', d.R5, { x: 480, y: 380 }, { rotation: 0 });
 
   // Right side: 5Ω resistor (vertical) - dataset R4
-  const r4 = compNode('R4', 'resistor', d.R4, { x: 600, y: 170 }, { rotation: 90 });
+  const r4 = compNode('R4', 'resistor', d.R4, { x: 555, y: 160 }, { rotation: 90 });
 
   // 6A current source: vertical, parallel to R2 (bridges NodeA <-> NodeB directly).
   const i1 = compNode('I1', 'current_source', s.I1, { x: 375, y: 310 }, { rotation: 90 });
