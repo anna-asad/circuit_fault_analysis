@@ -21,6 +21,8 @@ function Signup({ onSwitchToLogin }) {
       setError(signUpError.message);
       setLoading(false);
     } else {
+      // Store email temporarily for post-confirmation login
+      sessionStorage.setItem('pendingConfirmEmail', email);
       setSuccess(true);
       setLoading(false);
     }

@@ -37,9 +37,15 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const signUp = async (email, password) => {
+    // Get the current site URL for email confirmation redirect
+    const redirectUrl = window.location.origin;
+    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: redirectUrl,
+      }
     });
     return { data, error };
   };

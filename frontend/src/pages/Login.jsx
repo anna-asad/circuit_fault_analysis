@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import './Auth.css';
 
@@ -8,6 +8,29 @@ function Login({ onSwitchToSignup }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [confirmationSuccess, setConfirmationSuccess] = useState(false);
+
+  useEffect(() => {
+    // Check if user just confirmed their email
+    const urlParams = new URLSearchParams(window.location.search);
+    const emailConfirmed = urlParams.get('type') === 'signup' || urlParams.get('confirmed') === 'true';
+    
+    // Get the pending confirmation email from session storage
+    const pendingEmail = sessionStorage.getItem('pendingConfirmEmail');
+    
+    if (emailConfirmed && pendingEmail) {
+      setEmail(pendingEmail);
+      setConfirmationSuccess(true);
+      // Clear the stored email
+      sessionStorage.removeItem('pendingConfirmEmail');
+      
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (pendingEmail) {
+      // Pre-fill email even if not coming from confirmation
+      setEmail(pendingEmail);
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -28,6 +51,19 @@ function Login({ onSwitchToSignup }) {
       <div className="auth-card">
         <h1 className="auth-title">⚡ Welcome Back</h1>
         <p className="auth-subtitle">Sign in to Circuit Lab Simulator</p>
+
+        {confirmationSuccess && (
+          <div className="auth-success" style={{ 
+            background: '#d4edda', 
+            color: '#155724', 
+            padding: '12px', 
+            borderRadius: '8px', 
+            marginBottom: '16px',
+            border: '1px solid #c3e6cb'
+          }}>
+            ✓ Email confirmed! Please enter your password to sign in.
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
@@ -52,6 +88,7 @@ function Login({ onSwitchToSignup }) {
               required
               placeholder="••••••••"
               minLength={6}
+              autoFocus={confirmationSuccess}
             />
           </div>
 
