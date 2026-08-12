@@ -1424,17 +1424,18 @@ function CircuitCanvas({ setCircuit, mode = 'edit', circuit, componentCounters, 
         <Controls />
         <MiniMap
           nodeColor={(node) => {
-            if (node.data?.componentType === 'dc_source') return '#2563eb';
+            if (node.data?.componentType === 'dc_source') return '#00d9ff';
             if (node.data?.componentType === 'current_source') return '#7c3aed';
-            if (node.data?.componentType === 'ground') return '#4b5563';
-            if (node.data?.componentType === 'junction') return '#1a1a1a';
-            if (node.data?.componentType === 'ammeter')  return '#c0392b';
-            if (node.data?.componentType === 'voltmeter') return '#1a6ab5';
-            return '#059669';
+            if (node.data?.componentType === 'ground') return '#94a3b8';
+            if (node.data?.componentType === 'junction') return '#00d9ff';
+            if (node.data?.componentType === 'ammeter')  return '#ef4444';
+            if (node.data?.componentType === 'voltmeter') return '#3b82f6';
+            return '#10b981';
           }}
-          maskColor="rgba(240,240,232,0.7)"
+          maskColor="rgba(10, 14, 26, 0.8)"
+          style={{ background: '#1a1f2e', border: '1px solid #2d3748' }}
         />
-        <Background variant="lines" gap={20} size={1} color="#d0cfc6" />
+        <Background variant="lines" gap={20} size={1} color="#2d3748" />
       </ReactFlow>
     </div>
   );
