@@ -117,46 +117,51 @@ export const LESSONS = [
     id: 'i-lab-1-divider-12k',
     moduleId: 'intermediate',
     title: 'Voltage Divider (12 kΩ / 9 kΩ)',
-    subtitle: 'Dataset: voltage_divider_12k_9k',
+    subtitle: '7 V source with two resistors in series',
     circuitKey: 'voltage_divider_12k_9k',
     difficulty: 'Intermediate',
     durationMin: 10,
     datasetCircuitId: 'voltage_divider_12k_9k',
     objectives: ['Apply divider formula with dataset values', 'Verify vo from simulation'],
     steps: [
-      { type: 'observe', text: 'Vs = 7 V, R1 = 12 kΩ, R2 = 9 kΩ (dataset design_values).' },
+      { type: 'observe', text: 'The circuit has a 7 V source (Vs) with R1 = 12 kΩ and R2 = 9 kΩ from the dataset.' },
       {
-        type: 'predict', question: 'Output voltage vo across R2 (V)?', inputType: 'number',
-        expected: 3, tolerancePct: 3, hint: 'vo = 7 × 9000 / (12000 + 9000)',
+        type: 'predict', question: 'What is the output voltage vo across R2?', inputType: 'number',
+        expected: 3, tolerancePct: 3, hint: 'Use the voltage divider formula: vo = Vs × R2 / (R1 + R2)',
       },
-      { type: 'action', text: 'Simulate and compare to your prediction.' },
-      { type: 'verify', text: 'Dataset normal row: vo ≈ 2.99 V.' },
+      { type: 'action', text: 'Run the simulation and compare the result to your prediction.' },
+      { type: 'verify', text: 'If you calculated correctly, you should see approximately 2.99 V.' },
     ],
   },
   {
     id: 'i-lab-2-series-parallel',
     moduleId: 'intermediate',
     title: 'Series-Parallel Network',
-    subtitle: 'Dataset: series_parallel_R1R2R3R4',
+    subtitle: 'Four resistors with series and parallel combinations',
     circuitKey: 'series_parallel_R1R2R3R4',
     difficulty: 'Intermediate',
     durationMin: 12,
     datasetCircuitId: 'series_parallel_R1R2R3R4',
     objectives: ['Reduce series-parallel networks', 'Read branch currents from simulation'],
     steps: [
-      { type: 'observe', text: 'Vin = 10 V. R1=1 kΩ series; R2 ∥ (R3+R4) with R2=2 kΩ, R3=3 kΩ, R4=1.5 kΩ.' },
+      { type: 'observe', text: 'The circuit has Vin = 10 V. R1 = 1 kΩ is in series, then R2 = 2 kΩ is in parallel with (R3 = 3 kΩ + R4 = 1.5 kΩ).' },
       {
-        type: 'predict', question: 'Current through R1 (mA)?', inputType: 'number',
-        expected: 2.74, tolerancePct: 8, hint: 'Find Req, then I = Vin/Req.',
+        type: 'predict', question: 'What is the current through R1 in milliamps?', inputType: 'number',
+        expected: 2.74, tolerancePct: 8, hint: 'First find the equivalent resistance (Req), then use I = Vin / Req.',
       },
-      { type: 'action', text: 'Simulate and inspect R1 current.' },
-      { type: 'verify', text: 'Dataset normal row: I_R1 ≈ 2.74 mA.' },
+      { type: 'action', text: 'Run the simulation and check the current through R1.' },
+      { type: 'verify', text: 'If you calculated correctly, you should see approximately 2.74 mA.' },
     ],
     challenge: {
       mode: 'diagnose',
       datasetFault: 'partial_open',
       symptom: 'Source current dropped sharply — find the opened branch element.',
-      answer: { component: 'R1', faultType: 'partial_open' },
+      answer: { 
+        component: 'R1', 
+        faultType: 'partial_open',
+        correctValue: '1 kΩ',
+        faultyValue: '33.03 kΩ'
+      },
       choices: {
         components: ['R1', 'R2', 'R3', 'R4'],
         faultTypes: [
@@ -170,26 +175,31 @@ export const LESSONS = [
     id: 'i-lab-3-current-single-r',
     moduleId: 'intermediate',
     title: 'Current Source & Single Resistor',
-    subtitle: 'Dataset: current_source_single_R',
+    subtitle: '12 mA current source with load resistor',
     circuitKey: 'current_source_single_R',
     difficulty: 'Intermediate',
     durationMin: 10,
     datasetCircuitId: 'current_source_single_R',
     objectives: ['Relate I, R, and V for a current source load', 'Use dataset Rx = 416.67 Ω'],
     steps: [
-      { type: 'observe', text: 'I1 = 12 mA in parallel with Rx = 416.67 Ω (dataset nominal).' },
+      { type: 'observe', text: 'The circuit has a current source I1 = 12 mA in parallel with a resistor Rx = 416.67 Ω.' },
       {
-        type: 'predict', question: 'Voltage at node p (V)?', inputType: 'number',
-        expected: 5, tolerancePct: 5, hint: 'V = I × R',
+        type: 'predict', question: 'What is the voltage at node p? (Node p is where the current source and Rx connect)', inputType: 'number',
+        expected: 5, tolerancePct: 5, hint: 'Use Ohm\'s law: V = I × R',
       },
-      { type: 'action', text: 'Simulate and read voltage across Rx.' },
-      { type: 'verify', text: 'Dataset normal row: Vp ≈ 4.95 V.' },
+      { type: 'action', text: 'Run the simulation and read the voltage across Rx (at node p).' },
+      { type: 'verify', text: 'If you calculated correctly, you should see approximately 4.95 V.' },
     ],
     challenge: {
       mode: 'diagnose',
       datasetFault: 'partial_open',
       symptom: 'Node voltage is much higher than expected — the load resistance changed.',
-      answer: { component: 'Rx', faultType: 'partial_open' },
+      answer: { 
+        component: 'Rx', 
+        faultType: 'partial_open',
+        correctValue: '416.67 Ω',
+        faultyValue: 'significantly higher'
+      },
       choices: {
         components: ['Rx'],
         faultTypes: [
@@ -203,26 +213,31 @@ export const LESSONS = [
     id: 'i-lab-4-vdr-parallel',
     moduleId: 'intermediate',
     title: 'Parallel Network (VDR)',
-    subtitle: 'Dataset: vdr_parallel_network',
+    subtitle: 'Three resistors in parallel with current source',
     circuitKey: 'vdr_parallel_network',
     difficulty: 'Intermediate',
     durationMin: 12,
     datasetCircuitId: 'vdr_parallel_network',
     objectives: ['Analyze parallel branches with a current source', 'Find node voltage T'],
     steps: [
-      { type: 'observe', text: 'I1 = 12 mA feeds R1=6 kΩ, R2=12 kΩ, R3=12 kΩ in parallel.' },
+      { type: 'observe', text: 'A current source I1 = 12 mA feeds three resistors in parallel: R1 = 6 kΩ, R2 = 12 kΩ, and R3 = 12 kΩ.' },
       {
-        type: 'predict', question: 'Node voltage T (V)?', inputType: 'number',
-        expected: 36, tolerancePct: 5, hint: 'V = I × (R1‖R2‖R3)',
+        type: 'predict', question: 'What is the voltage at node T? (Node T is where all three resistors meet)', inputType: 'number',
+        expected: 36, tolerancePct: 5, hint: 'Find the parallel equivalent resistance, then use V = I × (R1‖R2‖R3)',
       },
-      { type: 'action', text: 'Simulate and read node T voltage.' },
-      { type: 'verify', text: 'Dataset normal row: V_T ≈ 35.9 V.' },
+      { type: 'action', text: 'Run the simulation and read the voltage at node T (labeled on the circuit).' },
+      { type: 'verify', text: 'If you calculated correctly, you should see approximately 35.9 V.' },
     ],
     challenge: {
       mode: 'diagnose',
       datasetFault: 'partial_open',
       symptom: 'Node T voltage rose — one parallel branch partially opened.',
-      answer: { component: 'R3', faultType: 'partial_open' },
+      answer: { 
+        component: 'R3', 
+        faultType: 'partial_open',
+        correctValue: '12 kΩ',
+        faultyValue: 'significantly higher'
+      },
       choices: {
         components: ['R1', 'R2', 'R3'],
         faultTypes: [
@@ -236,26 +251,31 @@ export const LESSONS = [
     id: 'i-lab-5-cs-divider',
     moduleId: 'intermediate',
     title: 'Current-Source Voltage Divider',
-    subtitle: 'Dataset: current_source_voltage_divider',
+    subtitle: '10 mA source with parallel resistor network',
     circuitKey: 'current_source_voltage_divider',
     difficulty: 'Intermediate',
     durationMin: 12,
     datasetCircuitId: 'current_source_voltage_divider',
     objectives: ['Apply current division to parallel resistors', 'Compute V_out'],
     steps: [
-      { type: 'observe', text: 'I1 = 10 mA, R1 = 1 kΩ ∥ R2 = 2 kΩ (dataset design_values).' },
+      { type: 'observe', text: 'The circuit has a current source I1 = 10 mA with R1 = 1 kΩ and R2 = 2 kΩ in parallel.' },
       {
-        type: 'predict', question: 'Output voltage V_out (V)?', inputType: 'number',
-        expected: 6.67, tolerancePct: 5, hint: 'V = I × (R1‖R2)',
+        type: 'predict', question: 'What is the output voltage V_out?', inputType: 'number',
+        expected: 6.67, tolerancePct: 5, hint: 'Find the parallel equivalent resistance, then use V = I × (R1‖R2)',
       },
-      { type: 'action', text: 'Simulate and read voltage at the output node.' },
-      { type: 'verify', text: 'Dataset normal row: V_out ≈ 6.75 V.' },
+      { type: 'action', text: 'Run the simulation and read the voltage at the output node.' },
+      { type: 'verify', text: 'If you calculated correctly, you should see approximately 6.75 V.' },
     ],
     challenge: {
       mode: 'diagnose',
       datasetFault: 'partial_open',
       symptom: 'Output voltage dropped — a branch resistor partially opened.',
-      answer: { component: 'R2', faultType: 'partial_open' },
+      answer: { 
+        component: 'R2', 
+        faultType: 'partial_open',
+        correctValue: '2 kΩ',
+        faultyValue: 'significantly higher'
+      },
       choices: {
         components: ['R1', 'R2'],
         faultTypes: [
@@ -269,26 +289,31 @@ export const LESSONS = [
     id: 'i-lab-6-t-network',
     moduleId: 'intermediate',
     title: 'Current-Source T-Network',
-    subtitle: 'Dataset: current_source_t_network',
+    subtitle: 'T-network topology with series and shunt resistors',
     circuitKey: 'current_source_t_network',
     difficulty: 'Intermediate',
     durationMin: 14,
     datasetCircuitId: 'current_source_t_network',
     objectives: ['Analyze a T-network fed by a current source', 'Read node b voltage'],
     steps: [
-      { type: 'observe', text: 'I1 = 5 mA, R_s=500 Ω, R_p=1 kΩ shunt, R_L=1.5 kΩ load (dataset values).' },
+      { type: 'observe', text: 'The circuit has I1 = 5 mA, with R_s = 500 Ω (series), R_p = 1 kΩ (shunt), and R_L = 1.5 kΩ (load) forming a T-network.' },
       {
-        type: 'predict', question: 'Voltage at node b (V)?', inputType: 'number',
-        expected: 5.01, tolerancePct: 5, hint: 'Solve the T-network with nodal analysis.',
+        type: 'predict', question: 'What is the voltage at node b? (Node b is at the junction after R_s)', inputType: 'number',
+        expected: 5.01, tolerancePct: 5, hint: 'Use nodal analysis to solve the T-network.',
       },
-      { type: 'action', text: 'Simulate and inspect node b voltage.' },
-      { type: 'verify', text: 'Dataset normal row: V_b ≈ 5.01 V.' },
+      { type: 'action', text: 'Run the simulation and check the voltage at node b (labeled on the circuit).' },
+      { type: 'verify', text: 'If you calculated correctly, you should see approximately 5.01 V.' },
     ],
     challenge: {
       mode: 'diagnose',
       datasetFault: 'partial_short',
       symptom: 'Shunt branch current increased — find the partially shorted resistor.',
-      answer: { component: 'R_p', faultType: 'partial_short' },
+      answer: { 
+        component: 'R_p', 
+        faultType: 'partial_short',
+        correctValue: '1 kΩ',
+        faultyValue: '112.53 Ω'
+      },
       choices: {
         components: ['R_s', 'R_p', 'R_L', 'R_leak'],
         faultTypes: [
@@ -302,26 +327,31 @@ export const LESSONS = [
     id: 'i-lab-7-kvl-loop',
     moduleId: 'intermediate',
     title: 'KVL Series Loop',
-    subtitle: 'Dataset: kvl_series_loop_ABCDEF',
+    subtitle: 'Multi-resistor loop with two voltage sources',
     circuitKey: 'kvl_series_loop_ABCDEF',
     difficulty: 'Intermediate',
     durationMin: 14,
     datasetCircuitId: 'kvl_series_loop_ABCDEF',
     objectives: ['Apply KVL around a multi-source loop', 'Verify node B voltage'],
     steps: [
-      { type: 'observe', text: 'Series loop: R_FA, R_AB, R_BC, V_CD=24 V, R_DE, V_EF=6 V (dataset values).' },
+      { type: 'observe', text: 'This series loop has resistors R_FA, R_AB, R_BC, R_DE and two voltage sources: V_CD = 24 V and V_EF = 6 V.' },
       {
-        type: 'predict', question: 'Node B voltage (V)?', inputType: 'number',
-        expected: 14.03, tolerancePct: 5, hint: 'Write KVL around the closed loop.',
+        type: 'predict', question: 'What is the voltage at node B? (Node B is between R_AB and R_BC)', inputType: 'number',
+        expected: 14.03, tolerancePct: 5, hint: 'Apply Kirchhoff\'s Voltage Law (KVL) around the closed loop.',
       },
-      { type: 'action', text: 'Simulate and read node B voltage.' },
-      { type: 'verify', text: 'Dataset normal row: V_B ≈ 14.03 V.' },
+      { type: 'action', text: 'Run the simulation and read the voltage at node B (labeled on the circuit).' },
+      { type: 'verify', text: 'If you calculated correctly, you should see approximately 14.03 V.' },
     ],
     challenge: {
       mode: 'diagnose',
       datasetFault: 'partial_open',
       symptom: 'Loop current collapsed — a series resistor partially opened.',
-      answer: { component: 'R_AB', faultType: 'partial_open' },
+      answer: { 
+        component: 'R_AB', 
+        faultType: 'partial_open',
+        correctValue: 'design value',
+        faultyValue: 'significantly higher'
+      },
       choices: {
         components: ['R_FA', 'R_AB', 'R_BC', 'R_DE'],
         faultTypes: [
@@ -335,26 +365,31 @@ export const LESSONS = [
     id: 'i-lab-8-multisource-5r',
     moduleId: 'intermediate',
     title: 'Multi-Source 5R Network',
-    subtitle: 'Dataset: multisource_5R_network',
+    subtitle: 'Complex network with multiple sources and parallel paths',
     circuitKey: 'multisource_5R_network',
     difficulty: 'Intermediate',
     durationMin: 15,
     datasetCircuitId: 'multisource_5R_network',
     objectives: ['Analyze a network with two voltage sources and a current source', 'Inspect node C voltage'],
     steps: [
-      { type: 'observe', text: 'V1=10 V, V2=15 V, I1=5 A with five resistors (dataset design_values).' },
+      { type: 'observe', text: 'This network has two voltage sources (V1 = 10 V, V2 = 15 V), one current source (I1 = 5 A), and five resistors.' },
       {
-        type: 'predict', question: 'Node C voltage (V)?', inputType: 'number',
-        expected: 2600, tolerancePct: 5, hint: 'Use nodal analysis at nodes A, B, C.',
+        type: 'predict', question: 'What is the voltage at node C? (Node C is the junction where I1, R4, and R5 meet)', inputType: 'number',
+        expected: 2600, tolerancePct: 5, hint: 'Apply nodal analysis at nodes A, B, and C to solve the circuit.',
       },
-      { type: 'action', text: 'Simulate and read node C voltage.' },
-      { type: 'verify', text: 'Dataset normal row: V_C ≈ 2600 V.' },
+      { type: 'action', text: 'Run the simulation and read the voltage at node C (the junction between R4, I1, and R5).' },
+      { type: 'verify', text: 'If you calculated correctly, you should see approximately 2600 V.' },
     ],
     challenge: {
       mode: 'diagnose',
       datasetFault: 'partial_open',
       symptom: 'Node voltages shifted — a branch resistor partially opened.',
-      answer: { component: 'R2', faultType: 'partial_open' },
+      answer: { 
+        component: 'R2', 
+        faultType: 'partial_open',
+        correctValue: '2 kΩ',
+        faultyValue: '90.8 kΩ'
+      },
       choices: {
         components: ['R1', 'R2', 'R3', 'R4', 'R5'],
         faultTypes: [
@@ -367,27 +402,32 @@ export const LESSONS = [
   {
     id: 'i-lab-9-multimesh',
     moduleId: 'intermediate',
-    title: 'MultiMesh Circuit',
-    subtitle: 'Dataset: nilsson_ex2_8_multi_source',
+    title: 'Multi-Mesh Circuit',
+    subtitle: 'Advanced mesh analysis with voltage and current sources',
     circuitKey: 'nilsson_ex2_8_multi_source',
     difficulty: 'Intermediate',
     durationMin: 15,
     datasetCircuitId: 'nilsson_ex2_8_multi_source',
     objectives: ['Analyze multi-mesh network with voltage and current sources', 'Apply mesh current method'],
     steps: [
-      { type: 'observe', text: 'V1=24 V, I1=6 A, five resistors (dataset design_values).' },
+      { type: 'observe', text: 'This multi-mesh circuit has V1 = 24 V, I1 = 6 A, and five resistors from the dataset.' },
       {
-        type: 'predict', question: 'Node c voltage (V)?', inputType: 'number',
-        expected: 26.31, tolerancePct: 5, hint: 'Apply nodal or mesh analysis.',
+        type: 'predict', question: 'What is the voltage at node c? (Node c is the right-side junction where R1, R2, R4, and I1 connect)', inputType: 'number',
+        expected: 26.31, tolerancePct: 5, hint: 'Apply nodal analysis or mesh current method to solve the circuit.',
       },
-      { type: 'action', text: 'Simulate and read node c voltage.' },
-      { type: 'verify', text: 'Dataset normal row: V_c ≈ 26.31 V.' },
+      { type: 'action', text: 'Run the simulation and read the voltage at node c (the junction on the right side of the circuit).' },
+      { type: 'verify', text: 'If you calculated correctly, you should see approximately 26.31 V.' },
     ],
     challenge: {
       mode: 'diagnose',
       datasetFault: 'partial_open',
       symptom: 'Node voltages do not match the textbook solution.',
-      answer: { component: 'R4', faultType: 'partial_open' },
+      answer: { 
+        component: 'R4', 
+        faultType: 'partial_open',
+        correctValue: '5 Ω',
+        faultyValue: '237.80 Ω'
+      },
       choices: {
         components: ['R1', 'R2', 'R3', 'R4', 'R5'],
         faultTypes: [

@@ -1,6 +1,6 @@
 .predict-panel {
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
+  background: #1a1f2e;
+  border: 1px solid #2d3748;
   border-radius: 10px;
   padding: 14px;
   margin-top: 12px;
@@ -11,7 +11,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #475569;
+  color: #00d9ff;
   margin-bottom: 8px;
 }
 
@@ -19,15 +19,29 @@
   font-size: 14px;
   margin-bottom: 10px;
   line-height: 1.4;
+  color: #e2e8f0;
 }
 
 .predict-input {
   width: 100%;
-  padding: 8px 10px;
-  border: 1px solid #94a3b8;
+  padding: 10px 12px;
+  border: 1px solid #2d3748;
+  background: #0f1419;
   border-radius: 6px;
   font-size: 14px;
   margin-bottom: 8px;
+  color: #e2e8f0;
+  transition: all 0.2s;
+}
+
+.predict-input:focus {
+  outline: none;
+  border-color: #00d9ff;
+  box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.1);
+}
+
+.predict-input::placeholder {
+  color: #4a5568;
 }
 
 .predict-choices {
@@ -43,6 +57,7 @@
   gap: 8px;
   font-size: 14px;
   cursor: pointer;
+  color: #e2e8f0;
 }
 
 .predict-hint {
@@ -54,13 +69,18 @@
 
 .predict-submit {
   width: 100%;
-  padding: 8px;
+  padding: 10px;
   border: none;
   border-radius: 6px;
-  background: #4f46e5;
+  background: #7c3aed;
   color: white;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s;
+}
+
+.predict-submit:hover:not(:disabled) {
+  background: #6d28d9;
 }
 
 .predict-submit:disabled {
@@ -75,13 +95,13 @@
 }
 
 .predict-result--ok {
-  background: #dcfce7;
-  border: 1px solid #86efac;
-  color: #166534;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid #10b981;
+  color: #6ee7b7;
 }
 
 .predict-result--miss {
-  background: #fef3c7;
-  border: 1px solid #fcd34d;
-  color: #92400e;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid #fbbf24;
+  color: #fcd34d;
 }
