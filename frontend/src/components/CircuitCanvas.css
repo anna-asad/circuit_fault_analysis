@@ -47,7 +47,7 @@
 .react-flow__node.selected > .circuit-node-component,
 .react-flow__node.selected > .circuit-node-junction,
 .react-flow__node.selected > .circuit-node-ground {
-  outline: 2px solid #00d9ff;
+  outline: 2px solid #ad33e5;
   outline-offset: 2px;
 }
 /* ReactFlow wraps nodes in an extra div; target the selection highlight via box-shadow */
@@ -56,7 +56,7 @@
 }
 
 .react-flow__edge.selected .react-flow__edge-path {
-  stroke: #00c4e6 !important;
+  stroke: #dd2aed !important;
   stroke-width: 2.5px !important;
 }
 
