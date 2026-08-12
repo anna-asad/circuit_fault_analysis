@@ -35,8 +35,7 @@ function LessonPlayer({ lessonId, onBack, onGoToLibrary }) {
     if (!lesson) return;
     markLessonStarted(lesson.id);
 
-    // Always start with normal values, not fault values
-    // Faults are only loaded when reaching the challenge phase
+    // Always start with normal values
     const preset = loadPresetCircuit(lesson.circuitKey, {});
     setPresetLoad(preset);
     setComponentCounters(preset.counters ?? {});
@@ -47,25 +46,6 @@ function LessonPlayer({ lessonId, onBack, onGoToLibrary }) {
     setShowResultsPage(false);
     setInChallengeMode(false);
   }, [lesson]);
-
-  // Load fault values when entering challenge mode
-  useEffect(() => {
-    if (!lesson || !inChallengeMode || !lesson.challenge?.datasetFault) return;
-    
-    const ds = getDatasetCircuit(lesson.datasetCircuitId);
-    const faultKey = `fault_${lesson.challenge.datasetFault}`;
-    const faultRow = ds?.[faultKey];
-    
-    if (faultRow) {
-      const presetOptions = {
-        faultValues: faultRow.component_values,
-        nominalValues: { ...ds.design_values, ...ds.sources },
-      };
-      const preset = loadPresetCircuit(lesson.circuitKey, presetOptions);
-      setPresetLoad(preset);
-      setComponentCounters(preset.counters ?? {});
-    }
-  }, [inChallengeMode, lesson]);
 
   const handleSimulateResults = useCallback((results) => {
     setSimulationResults(results);
@@ -83,12 +63,6 @@ function LessonPlayer({ lessonId, onBack, onGoToLibrary }) {
     if (stepIndex < totalSteps - 1) {
       setStepIndex((i) => i + 1);
       setPredictResult(null);
-    } else if (lesson.challenge && !diagnoseResult) {
-      // Entering detective mode - load fault circuit
-      if (!inChallengeMode) {
-        setInChallengeMode(true);
-      }
-      // stay on last step for challenge
     } else {
       markLessonCompleted(lesson.id);
     }
@@ -99,6 +73,37 @@ function LessonPlayer({ lessonId, onBack, onGoToLibrary }) {
       setStepIndex((i) => i - 1);
       setPredictResult(null);
     }
+  };
+
+  const handleEnterDetectiveMode = () => {
+    if (!lesson.challenge) return;
+    
+    // Load fault circuit
+    const ds = getDatasetCircuit(lesson.datasetCircuitId);
+    const faultKey = `fault_${lesson.challenge.datasetFault}`;
+    const faultRow = ds?.[faultKey];
+    
+    if (faultRow) {
+      const presetOptions = {
+        faultValues: faultRow.component_values,
+        nominalValues: { ...ds.design_values, ...ds.sources },
+      };
+      const preset = loadPresetCircuit(lesson.circuitKey, presetOptions);
+      setPresetLoad(preset);
+      setComponentCounters(preset.counters ?? {});
+    }
+    
+    setInChallengeMode(true);
+    setDiagnoseResult(null);
+  };
+
+  const handleExitDetectiveMode = () => {
+    // Reload normal circuit
+    const preset = loadPresetCircuit(lesson.circuitKey, {});
+    setPresetLoad(preset);
+    setComponentCounters(preset.counters ?? {});
+    setInChallengeMode(false);
+    setDiagnoseResult(null);
   };
 
   const handlePredictSubmit = (result) => {
@@ -113,9 +118,7 @@ function LessonPlayer({ lessonId, onBack, onGoToLibrary }) {
   };
 
   const handleFinishLesson = () => {
-    if (!lesson.challenge || diagnoseResult?.correct) {
-      markLessonCompleted(lesson.id);
-    }
+    markLessonCompleted(lesson.id);
     onGoToLibrary?.();
   };
 
@@ -129,9 +132,7 @@ function LessonPlayer({ lessonId, onBack, onGoToLibrary }) {
   }
 
   const isLastStep = stepIndex >= totalSteps - 1;
-  const lessonComplete =
-    (!lesson.challenge && isLastStep && (currentStep?.type !== 'predict' || predictResult)) ||
-    (lesson.challenge && diagnoseResult?.correct);
+  const lessonComplete = isLastStep && (currentStep?.type !== 'predict' || predictResult);
 
   return (
     <>
@@ -150,6 +151,26 @@ function LessonPlayer({ lessonId, onBack, onGoToLibrary }) {
             <span className="lesson-step-badge">
               Step {stepIndex + 1} of {totalSteps}
             </span>
+            {lesson.challenge && !inChallengeMode && (
+              <button 
+                type="button" 
+                className="detective-mode-btn"
+                onClick={handleEnterDetectiveMode}
+                title="Try detective mode challenge"
+              >
+                🔍 Detective Mode
+              </button>
+            )}
+            {inChallengeMode && (
+              <button 
+                type="button" 
+                className="exit-detective-btn"
+                onClick={handleExitDetectiveMode}
+                title="Exit detective mode"
+              >
+                ← Exit Detective
+              </button>
+            )}
             <SimulateButton
               circuit={circuit}
               onSimulate={handleSimulateResults}
@@ -188,7 +209,7 @@ function LessonPlayer({ lessonId, onBack, onGoToLibrary }) {
               </ol>
             </section>
 
-            {currentStep && (
+            {currentStep && !inChallengeMode && (
               <section className="lesson-panel lesson-current-step">
                 <h3>{STEP_TYPE_LABELS[currentStep.type] ?? 'Step'}</h3>
                 <p>{currentStep.text || currentStep.question}</p>
@@ -212,13 +233,13 @@ function LessonPlayer({ lessonId, onBack, onGoToLibrary }) {
                       currentStep.type === 'predict' && !predictResult
                     }
                   >
-                    {isLastStep && !lesson.challenge ? 'Finish' : 'Next →'}
+                    {isLastStep ? 'Finish' : 'Next →'}
                   </button>
                 </div>
               </section>
             )}
 
-            {lesson.challenge && isLastStep && (
+            {inChallengeMode && lesson.challenge && (
               <section className="lesson-panel">
                 <DiagnoseChallenge
                   challenge={lesson.challenge}
@@ -228,9 +249,15 @@ function LessonPlayer({ lessonId, onBack, onGoToLibrary }) {
               </section>
             )}
 
-            {lessonComplete && (
+            {lessonComplete && !inChallengeMode && (
               <button type="button" className="lesson-complete-btn" onClick={handleFinishLesson}>
                 ✓ Lab complete — back to library
+              </button>
+            )}
+
+            {inChallengeMode && diagnoseResult?.correct && (
+              <button type="button" className="lesson-complete-btn" onClick={handleExitDetectiveMode}>
+                ✓ Detective challenge solved!
               </button>
             )}
           </aside>

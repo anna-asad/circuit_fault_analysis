@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import './DiagnoseChallenge.css';
 
-function DiagnoseChallenge({ challenge, onSubmit, result }) {
+function DiagnoseChallenge({ challenge, onSubmit, result, datasetCircuitId }) {
   const [component, setComponent] = useState('');
   const [faultType, setFaultType] = useState('');
 
   if (!challenge) return null;
+
+  // Get the correct value from challenge answer
+  const correctValue = challenge.answer.correctValue;
+  const faultyValue = challenge.answer.faultyValue;
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -56,6 +60,12 @@ function DiagnoseChallenge({ challenge, onSubmit, result }) {
       ) : (
         <div className={`diagnose-result diagnose-result--${result.correct ? 'ok' : 'miss'}`}>
           <strong>{result.correct ? '✓' : '✗'} {result.message}</strong>
+          {!result.correct && correctValue && (
+            <div className="diagnose-hint">
+              <p><strong>Hint:</strong> The correct value for {challenge.answer.component} should be {correctValue}.</p>
+              <p>Change {challenge.answer.component} from its current faulty value ({faultyValue}) to the correct value and simulate again to verify the fix.</p>
+            </div>
+          )}
         </div>
       )}
     </div>

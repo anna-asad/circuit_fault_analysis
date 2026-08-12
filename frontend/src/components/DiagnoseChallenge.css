@@ -1,6 +1,6 @@
 .diagnose-challenge {
-  background: #fff7ed;
-  border: 1px solid #fdba74;
+  background: #1a1f2e;
+  border: 1px solid #fb7185;
   border-radius: 10px;
   padding: 14px;
   margin-top: 12px;
@@ -10,11 +10,12 @@
   font-size: 13px;
   font-weight: 700;
   margin-bottom: 6px;
+  color: #fb7185;
 }
 
 .diagnose-symptom {
   font-size: 13px;
-  color: #9a3412;
+  color: #fda4af;
   margin-bottom: 12px;
   line-height: 1.4;
 }
@@ -26,24 +27,39 @@
   font-size: 12px;
   font-weight: 600;
   margin-bottom: 10px;
+  color: #e2e8f0;
 }
 
 .diagnose-label select {
-  padding: 8px;
-  border: 1px solid #cbd5e1;
+  padding: 10px;
+  border: 1px solid #2d3748;
+  background: #0f1419;
   border-radius: 6px;
   font-size: 13px;
+  color: #e2e8f0;
+  transition: all 0.2s;
+}
+
+.diagnose-label select:focus {
+  outline: none;
+  border-color: #fb7185;
+  box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.1);
 }
 
 .diagnose-submit {
   width: 100%;
-  padding: 8px;
+  padding: 10px;
   border: none;
   border-radius: 6px;
-  background: #ea580c;
-  color: white;
+  background: #fb7185;
+  color: #0a0e1a;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s;
+}
+
+.diagnose-submit:hover:not(:disabled) {
+  background: #f43f5e;
 }
 
 .diagnose-submit:disabled {
@@ -57,13 +73,32 @@
 }
 
 .diagnose-result--ok {
-  background: #dcfce7;
-  border: 1px solid #86efac;
-  color: #166534;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid #10b981;
+  color: #6ee7b7;
 }
 
 .diagnose-result--miss {
-  background: #fee2e2;
-  border: 1px solid #fca5a5;
-  color: #991b1b;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid #ef4444;
+  color: #fca5a5;
+}
+
+.diagnose-hint {
+  margin-top: 10px;
+  padding: 10px;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid #fbbf24;
+  border-radius: 6px;
+  color: #fcd34d;
+}
+
+.diagnose-hint p {
+  margin: 6px 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.diagnose-hint strong {
+  color: #fbbf24;
 }

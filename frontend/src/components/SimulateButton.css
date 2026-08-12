@@ -1,19 +1,20 @@
 .simulate-btn {
   padding: 10px 24px;
-  background: #3b82f6;
-  color: white;
+  background: #00d9ff;
+  color: #0a0e1a;
   border: none;
   border-radius: 8px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 217, 255, 0.3);
 }
 
 .simulate-btn:hover {
-  background: #2563eb;
+  background: #00c4e6;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 217, 255, 0.4);
 }
 
 .simulate-btn:active {
@@ -21,7 +22,9 @@
 }
 
 .simulate-btn:disabled {
-  background: #9ca3af;
+  background: #475569;
+  color: #64748b;
   cursor: not-allowed;
   transform: none;
+  box-shadow: none;
 }

@@ -69,6 +69,44 @@
   border: 1px solid #2d3748;
 }
 
+.detective-mode-btn {
+  padding: 8px 14px;
+  background: rgba(251, 113, 133, 0.15);
+  border: 2px solid #fb7185;
+  border-radius: 8px;
+  color: #fb7185;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.detective-mode-btn:hover {
+  background: rgba(251, 113, 133, 0.25);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(251, 113, 133, 0.3);
+}
+
+.exit-detective-btn {
+  padding: 8px 14px;
+  background: #1a1f2e;
+  border: 2px solid #2d3748;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.exit-detective-btn:hover {
+  background: #2d3748;
+  border-color: #00d9ff;
+  color: #00d9ff;
+}
+
 .lesson-body {
   flex: 1;
   display: flex;
