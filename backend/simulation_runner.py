@@ -57,17 +57,16 @@ class SimulationRunner:
                             if cid not in currents:
                                 currents[cid] = comp.get("value", 0)
 
-                # An open switch should block current completely. Keep the node
-                # voltages from the solver so the source voltage remains intact,
-                # but force all branch currents to zero for an ideal open circuit.
-                if circuit_data:
-                    has_open_switch = any(
-                        comp.get("type") == "switch"
-                        and str(comp.get("state", "open")).lower() == "open"
-                        for comp in circuit_data.get("components", [])
-                    )
-                    if has_open_switch:
-                        currents = {key: 0.0 for key in currents}
+                # Handle open switches: they block current in their own branch only.
+                # Don't zero out the entire circuit — only zero currents through
+                # components that are in series with an open switch.
+                # 
+                # For now, we let ngspice handle it naturally: open switch = 1e9Ω
+                # means negligible current through that branch, while parallel
+                # branches with closed switches conduct normally.
+                # 
+                # Previous logic incorrectly zeroed ALL currents if ANY switch was open,
+                # which broke parallel circuits where independent branches should still work.
 
                 return {"success": True, "voltages": voltages, "currents": currents,
                         "raw_output": result.stdout, "error": None}

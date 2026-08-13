@@ -111,6 +111,34 @@ export const LESSONS = [
     ],
     challenge: null,
   },
+  {
+    id: 'b-lab-5-two-room-lighting',
+    moduleId: 'beginner',
+    title: 'Lab 5: Two-Room Lighting',
+    subtitle: 'Independent switches control separate bulbs in parallel',
+    circuitKey: 'two_room_lighting',
+    difficulty: 'Beginner',
+    durationMin: 10,
+    datasetCircuitId: null,
+    objectives: ['Understand parallel branch independence', 'Control loads with switches', 'Observe bulb brightness changes'],
+    steps: [
+      { type: 'observe', text: '120 V source powers two parallel branches. Each branch has a switch (SW1 or SW2) and a bulb (L1 or L2).' },
+      { type: 'action', text: 'Both switches start open. Click SW1 to close it, then run the simulation.' },
+      {
+        type: 'predict', question: 'With only SW1 closed, which bulb lights up?',
+        inputType: 'choice', choices: ['L1 only', 'L2 only', 'Both bulbs', 'Neither bulb'], expected: 'L1 only',
+        hint: 'Each switch controls only its own branch. SW2 is still open.',
+      },
+      { type: 'action', text: 'Now close SW2 as well (both switches closed), then simulate again.' },
+      {
+        type: 'predict', question: 'With both switches closed, what happens?',
+        inputType: 'choice', choices: ['L1 only', 'L2 only', 'Both bulbs', 'Neither bulb'], expected: 'Both bulbs',
+        hint: 'Parallel branches work independently — each closed switch completes its own loop.',
+      },
+      { type: 'verify', text: 'Open SW1 and leave SW2 closed. Only L2 should light up now.' },
+    ],
+    challenge: null,
+  },
 
   // ── Intermediate tier (dataset circuits) ──────────────────────────────────
   {
