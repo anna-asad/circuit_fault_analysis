@@ -65,6 +65,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "https://circuit-fault-analysis.vercel.app",
         "https://circuit-fault-analysis-git-main-anna-64a9.vercel.app",
+        "https://circuit-fault-analysis-ten.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
