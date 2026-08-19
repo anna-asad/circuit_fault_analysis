@@ -117,3 +117,5 @@ All Python files are runnable independently:
 - Each file includes proper imports
 - Each file has a `if __name__ == '__main__'` block
 - Test files add parent directory to Python path for imports
+  Deployed live with a working frontend-backend connection.
+
