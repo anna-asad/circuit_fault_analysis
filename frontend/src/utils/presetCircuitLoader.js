@@ -475,6 +475,46 @@ function buildMultisource5RNetwork() {
   };
 }
 
+function buildTwoRoomLighting() {
+  // Two-room lighting circuit with independent switches
+  // Parallel branches: V1 → junction → [ SW1→L1 | SW2→L2 ] → junction → V1
+  // Each switch controls its own bulb independently
+  const y = 250;
+  const v1 = compNode('V1', 'dc_source', 120, { x: 100, y },{ rotation: 90 });
+  const j1 = junctionNode({ x: 300, y });
+  
+  // Branch 1: SW1 → L1 (top)
+  const sw1 = compNode('SW1', 'switch', 0, { x: 500, y: 100 }, { state: 'open' });
+  const l1 = compNode('L1', 'bulb', 240, { x: 700, y: 100 });
+  
+  // Branch 2: SW2 → L2 (bottom)
+  const sw2 = compNode('SW2', 'switch', 0, { x: 500, y: 400 }, { state: 'open' });
+  const l2 = compNode('L2', 'bulb', 240, { x: 700, y: 400 });
+  
+  const j2 = junctionNode({ x: 900, y });
+  const gnd = compNode('GND', 'ground', 0, { x: 300, y: 500 });
+
+  const edges = [
+    // V1 → j1
+    wire(v1.id, 'right', j1.id, 'left', 0),
+    // j1 splits to both branches
+    wire(j1.id, 'top', sw1.id, 'left', 1),
+    wire(j1.id, 'bottom', sw2.id, 'left', 2),
+    // Branch 1: SW1 → L1 → j2
+    wire(sw1.id, 'right', l1.id, 'left', 3),
+    wire(l1.id, 'right', j2.id, 'top', 4),
+    // Branch 2: SW2 → L2 → j2
+    wire(sw2.id, 'right', l2.id, 'left', 5),
+    wire(l2.id, 'right', j2.id, 'bottom', 6),
+    // j2 → V1 return
+    wire(j2.id, 'left', v1.id, 'left', 7),
+    // Ground reference
+    wire(gnd.id, 'top', j1.id, 'bottom', 8),
+  ];
+
+  return { nodes: [v1, sw1, l1, sw2, l2, j1, j2, gnd], edges, counters: countCounters([v1, sw1, l1, sw2, l2]) };
+}
+
 function buildMultiMeshCircuit() {
   const d = dv('nilsson_ex2_8_multi_source');
   const s = src('nilsson_ex2_8_multi_source');
@@ -574,6 +614,7 @@ const BUILDERS = {
   beginner_two_resistors: buildBeginnerTwoResistors,
   beginner_resistor_bulb: buildBeginnerResistorBulb,
   beginner_parallel_resistors: buildBeginnerParallelTwoResistors,
+  two_room_lighting: buildTwoRoomLighting,
   series_parallel_R1R2R3R4: buildSeriesParallelR1R2R3R4,
   voltage_divider_12k_9k: buildVoltageDivider12k9k,
   current_source_single_R: buildCurrentSourceSingleR,
